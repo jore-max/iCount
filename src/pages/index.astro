@@ -103,6 +103,16 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
       <span class="lbl">Nog te ontvangen</span>
       <b class="num">{metOpen.length ? euro(totaalOpen) : "–"}</b>
       <span class="t3">{metOpen.length ? <>{aantalOpen} {aantalOpen === 1 ? "factuur" : "facturen"} incl. btw{totaalVervallen > 0 && <> · <span class="neg">{kort(totaalVervallen)} vervallen</span></>}</> : "geen gegevens uit Billit"}</span>
+      {metOpen.length > 0 && (
+        <ul class="perbv">
+          {rijen.map((r, i) => r.inWinst && r.openstaand && (
+            <li title={`${r.openstaand.aantal} ${r.openstaand.aantal === 1 ? "factuur" : "facturen"}, ${euro(r.openstaand.vervallen)} vervallen`}>
+              <span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span>
+              <span class="num">{euro(r.openstaand.bedrag)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   </section>
 
@@ -232,7 +242,10 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
   .lbl { font-size: 13px; font-weight: 500; color: var(--text-2); }
   .kpi b { font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
   .kpi b.groot { font-size: 34px; }
-  .kpi > span:last-child { font-size: 13px; }
+  .kpi > span.t3 { font-size: 13px; }
+  .perbv { list-style: none; margin: 6px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); display: grid; gap: 4px; font-size: 13px; }
+  .perbv li { display: flex; justify-content: space-between; gap: 12px; }
+  .perbv .bvn { color: var(--text-2); }
 
   section.panel { margin-top: 16px; }
   .kaart { padding: 22px 24px 18px; }

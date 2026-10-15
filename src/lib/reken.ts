@@ -74,6 +74,7 @@ export type Openstaand = { bedrag: number; aantal: number; vervallen: number; de
 
 export function openstaandUitOrders(orders: Obj[], vandaag = new Date().toISOString().slice(0, 10)): Openstaand {
   let bedrag = 0, aantal = 0, vervallen = 0;
+  const lijst: unknown[] = [];
   const d = { orders: orders.length, betaald: 0, concept: 0, zonderToPay: 0, totaalIncl: 0, creditnotas: 0, creditBedrag: 0, statussen: {} as Record<string, number> };
   for (const o of orders) {
     const type = String(veld(o, "OrderType") ?? "").toLowerCase();
@@ -81,6 +82,7 @@ export function openstaandUitOrders(orders: Obj[], vandaag = new Date().toISOStr
     if (!credit && type !== "invoice") continue;
     if (String(veld(o, "OrderDirection") ?? "").toLowerCase() !== "income") continue;
     const status = String(veld(o, "OrderStatus") ?? "");
+    lijst.push([veld(o, "OrderNumber"), type, status, veld(o, "TotalIncl"), veld(o, "ToPay"), veld(o, "Paid"), String(veld(o, "ExpiryDate") ?? "").slice(0, 10), veld(o, "Overdue")]);
     d.statussen[status] = (d.statussen[status] ?? 0) + 1;
     if (/draft|concept/i.test(status)) { d.concept++; continue; }
     const betaald = veld(o, "Paid", "IsPaid");
@@ -96,7 +98,7 @@ export function openstaandUitOrders(orders: Obj[], vandaag = new Date().toISOStr
     const vervaldag = String(veld(o, "ExpiryDate", "DueDate", "PaymentDueDate") ?? "").slice(0, 10);
     if (vervaldag && vervaldag < vandaag) vervallen += open;
   }
-  return { bedrag, aantal, vervallen, detail: { ...d, velden: orders[0] ? Object.keys(orders[0]) : [] } };
+  return { bedrag, aantal, vervallen, detail: { ...d, lijst } };
 }
 
 const normIban = (s: any) => String(s ?? "").replace(/\s/g, "").toUpperCase();
