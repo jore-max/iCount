@@ -62,7 +62,8 @@ const balken = perMaand.map((d, m) => {
 });
 const tipData = balken.map((b) => ({ maand: `${MAANDEN[b.m]} ${jaar}`, totaal: euro(b.totaal), rijen: b.d.map((s) => ({ naam: s.naam, i: s.i, v: euro(s.v) })) }));
 
-const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
+// balk = aandeel in het totaal (alle balken samen = 100%)
+const somSaldo = Math.max(1, rijen.reduce((s, r) => s + Math.abs(r.saldo), 0));
 ---
 <Layout titel="Overzicht" actief="overzicht">
   <div class="head">
@@ -171,7 +172,7 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
         {rijen.map((r, i) => (
           <li>
             <div class="liqkop"><span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span><span class:list={["num sterk", { neg: r.saldo < 0 }]}>{euro(r.saldo)}</span></div>
-            <div class="spoor"><span style={`width:${(Math.abs(r.saldo) / maxSaldo) * 100}%;background:var(--bv${i + 1})`}></span></div>
+            <div class="spoor"><span style={`width:${(Math.abs(r.saldo) / somSaldo) * 100}%;background:var(--bv${i + 1})`}></span></div>
             <span class="t3">{totaalSaldo > 0 && r.saldo > 0 ? `${pct((r.saldo / totaalSaldo) * 100)} van totaal · ` : ""}{r.rekeningen.length} {r.rekeningen.length === 1 ? "rekening" : "rekeningen"}</span>
           </li>
         ))}
