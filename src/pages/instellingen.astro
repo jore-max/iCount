@@ -1,6 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import { laad, bewaar, uitForm } from "../lib/data";
+import { laad, bewaar, uitForm, bedrijvenUitBillit, standaardNaam } from "../lib/data";
 import { cfgVoor } from "../lib/billit";
 
 if (Astro.request.method === "POST") {
@@ -9,6 +9,7 @@ if (Astro.request.method === "POST") {
 }
 const opgeslagen = Astro.url.searchParams.has("ok");
 const data = await laad();
+const bedrijven = await bedrijvenUitBillit();
 const billit = [1, 2, 3, 4].map((n) => !!cfgVoor(n));
 const bijgewerkt = data.bijgewerkt
   ? new Date(data.bijgewerkt).toLocaleString("nl-BE", { timeZone: "Europe/Brussels", dateStyle: "medium", timeStyle: "short" })
@@ -27,13 +28,13 @@ const bijgewerkt = data.bijgewerkt
         <fieldset class="panel" style={`--c:var(--bv${i + 1})`}>
           <div class="kop">
             <span class="dot"></span>
-            <input class="naam" name={`bv${i}_naam`} value={bv.naam} aria-label="Naam van de BV" />
+            <input class="naam" name={`bv${i}_naam`} value={standaardNaam(bv.naam) ? "" : bv.naam} placeholder={bedrijven[i]?.naam || `BV ${i + 1}`} aria-label="Naam van de BV" />
             {billit[i] ? <span class="chip live">Billit</span> : <span class="chip">Handmatig</span>}
           </div>
 
           <div class="opties">
             <label class="check"><input type="checkbox" name={`bv${i}_inwinst`} checked={bv.inWinst} /> Telt mee in de winst</label>
-            <label class="btw">Btw-nummer<input name={`bv${i}_btw`} value={bv.btw} placeholder="BE0123456789" /></label>
+            <label class="btw">Btw-nummer<input name={`bv${i}_btw`} value={bv.btw} placeholder={bedrijven[i]?.btw || "uit Billit"} /></label>
           </div>
           {billit[i]
             ? <input type="hidden" name={`bv${i}_winst`} value={bv.winstHandmatig} />
@@ -56,7 +57,7 @@ const bijgewerkt = data.bijgewerkt
       ))}
     </div>
     <div class="bar">
-      <p class="t3">Zet "Telt mee in de winst" uit voor een BV die aan de andere factureert (zoals Jove): haar winst telt dan niet mee, en haar facturen worden uit de kosten van de andere BV's gehaald. Herkenning gebeurt op btw-nummer (leeg = uit Billit) of op naam. Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
+      <p class="t3">Zet "Telt mee in de winst" uit voor een BV die aan de andere factureert (zoals Jove): haar winst telt dan niet mee, en haar facturen worden uit de kosten van de andere BV's gehaald. Naam en btw-nummer komen uit Billit; vul ze enkel in om ze te overschrijven. Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
       <button class="btn primary" type="submit">Opslaan</button>
     </div>
   </form>
