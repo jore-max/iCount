@@ -40,7 +40,7 @@ Handmatig kan ook:
     npx wrangler login
     npm run deploy
 
-`wrangler deploy` maakt de KV-namespaces (ICOUNT, SESSION) zelf aan.
+De KV-namespaces `icount` en `icount-session` staan in `wrangler.jsonc`. Toegang loopt via Cloudflare Access (app "iCount").
 
 ## Beveiliging
 
