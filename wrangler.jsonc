@@ -4,6 +4,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "./dist", "binding": "ASSETS" },
+  "routes": [{ "pattern": "icount.ibite.be", "custom_domain": true }],
+  "observability": { "enabled": true },
   "kv_namespaces": [
     // Zonder id maakt wrangler deploy de KV-namespace automatisch aan
     { "binding": "ICOUNT" }

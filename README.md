@@ -31,6 +31,12 @@ Controle: `/billit-test` toont per BV twee ruwe records uit Billit.
 
 ## Online zetten
 
+Draait op https://icount.ibite.be (custom domain in `wrangler.jsonc`).
+Cloudflare Workers Builds bouwt bij elke push naar `main`:
+build `npm run build`, deploy `npx wrangler deploy --config dist/server/wrangler.json`.
+
+Handmatig kan ook:
+
     npx wrangler login
     npm run deploy
 
