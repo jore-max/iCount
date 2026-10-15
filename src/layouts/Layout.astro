@@ -1,0 +1,70 @@
+---
+interface Props { titel: string; actief: "overzicht" | "instellingen" }
+const { titel, actief } = Astro.props;
+---
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{titel} · iCount</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><text x='16' y='22' font-size='17' font-family='system-ui' font-weight='700' fill='white' text-anchor='middle'>i</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style is:global>
+    :root {
+      --bg: #f5f6fa; --card: #ffffff; --text: #111827; --muted: #6b7280; --line: #e7e9f0; --soft: #f1f2f7;
+      --accent: #4f46e5; --accent-soft: #eef0ff; --pos: #059669; --neg: #dc2626;
+      --bv1: #4f46e5; --bv2: #0ea5e9; --bv3: #f59e0b; --bv4: #ec4899;
+      --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0d12; --card: #151821; --text: #eef0f5; --muted: #9aa1b2; --line: #252a36; --soft: #1c2030;
+        --accent: #8b85ff; --accent-soft: #23234a; --pos: #34d399; --neg: #f87171;
+        --bv1: #8b85ff; --bv2: #38bdf8; --bv3: #fbbf24; --bv4: #f472b6;
+        --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; font: 15px/1.5 Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .muted { color: var(--muted); }
+    .neg { color: var(--neg); }
+    .pos { color: var(--pos); }
+    a { color: inherit; }
+    header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+    .topin { display: flex; align-items: center; gap: 16px; height: 60px; }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; text-decoration: none; }
+    .logo i { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; font-style: normal; font-size: 15px; }
+    nav { display: flex; gap: 4px; margin-left: auto; }
+    nav a { text-decoration: none; padding: 7px 12px; border-radius: 8px; color: var(--muted); font-weight: 500; font-size: 14px; }
+    nav a[aria-current] { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+    main { padding: 28px 0 64px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+    .btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px; font-weight: 500; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; text-decoration: none; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); }
+    .badge.live { background: var(--accent-soft); color: var(--accent); }
+    .badge.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .alert { padding: 10px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
+    .alert.ok { background: color-mix(in srgb, var(--pos) 12%, var(--card)); color: var(--pos); }
+    .alert.err { background: color-mix(in srgb, var(--neg) 12%, var(--card)); color: var(--neg); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap topin">
+      <a class="logo" href="/"><i>i</i>iCount</a>
+      <nav>
+        <a href="/" aria-current={actief === "overzicht" ? "page" : undefined}>Overzicht</a>
+        <a href="/instellingen" aria-current={actief === "instellingen" ? "page" : undefined}>Instellingen</a>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap"><slot /></main>
+</body>
+</html>

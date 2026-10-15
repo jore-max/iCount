@@ -8,11 +8,14 @@ export type BillitCfg = { key: string; partyId?: string; base: string };
 // Standaard: één gedeelde BILLIT_KEY met per BV de PartyID in BILLIT_PARTYID_n.
 // Een aparte sleutel per BV kan ook met BILLIT_KEY_n.
 export function cfgVoor(n: number): BillitCfg | null {
-  const key = E[`BILLIT_KEY_${n}`] ?? E.BILLIT_KEY;
+  const eigen = E[`BILLIT_KEY_${n}`];
+  const partyId = E[`BILLIT_PARTYID_${n}`] || undefined;
+  // met de gedeelde sleutel is een PartyID nodig, anders weet Billit niet welke BV
+  const key = eigen ?? (partyId ? E.BILLIT_KEY : undefined);
   if (!key) return null;
   return {
     key,
-    partyId: E[`BILLIT_PARTYID_${n}`] || undefined,
+    partyId,
     base: (E.BILLIT_BASE || "https://api.billit.be").replace(/\/$/, ""),
   };
 }
