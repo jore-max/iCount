@@ -85,11 +85,6 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
 
   <section class="panel kpis">
     <div class="kpi">
-      <span class="lbl">Winst + liquide middelen</span>
-      <b class="num groot">{euro(totaalWinst + totaalSaldo)}</b>
-      <span class="t3">stand {new Date().toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long" })}</span>
-    </div>
-    <div class="kpi">
       <span class="lbl">Winst {jaar}</span>
       <b class:list={["num", { neg: totaalWinst < 0 }]}>{euro(totaalWinst)}</b>
       <span class="t3">{totaalOmzet ? <>marge <span class="t2">{pct((totaalWinst / totaalOmzet) * 100)}</span> op {kort(totaalOmzet)} omzet</> : "nog geen omzet"}{totaalIntern !== 0 && <> · {kort(totaalIntern)} van {buiten.map((r) => r.naam).join(", ")} weggelaten</>}</span>
@@ -97,7 +92,7 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
     <div class="kpi">
       <span class="lbl">Liquide middelen</span>
       <b class:list={["num", { neg: totaalSaldo < 0 }]}>{euro(totaalSaldo)}</b>
-      <span class="t3">{rekeningen.length} rekeningen</span>
+      <span class="t3">{rekeningen.length} rekeningen · stand {new Date().toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long" })}</span>
     </div>
     <div class="kpi">
       <span class="lbl">Nog te ontvangen</span>
@@ -236,7 +231,7 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
   .seg a { text-decoration: none; padding: 4px 11px; border-radius: 7px; font-weight: 500; color: var(--text-2); }
   .seg a[aria-current] { background: #fff; color: var(--text); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(16,24,40,.06); }
 
-  .kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr 1fr; }
   .kpi { padding: 22px 24px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .kpi + .kpi { border-left: 1px solid var(--line); }
   .lbl { font-size: 13px; font-weight: 500; color: var(--text-2); }
@@ -296,9 +291,6 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
 
   @media (max-width: 1100px) {
     .twee { grid-template-columns: 1fr; }
-    .kpis { grid-template-columns: 1fr 1fr; }
-    .kpis .kpi:nth-child(3) { border-left: 0; }
-    .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
   }
   @media (max-width: 760px) {
     .kpis { grid-template-columns: 1fr; }
