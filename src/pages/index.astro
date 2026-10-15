@@ -1,0 +1,156 @@
+---
+import { laad, bewaar, uitForm, overzicht } from "../lib/data";
+import { euro } from "../lib/reken";
+
+if (Astro.request.method === "POST") {
+  await bewaar(uitForm(await Astro.request.formData()));
+  return Astro.redirect("/?ok=1", 303);
+}
+const opgeslagen = Astro.url.searchParams.has("ok");
+const ditJaar = new Date().getFullYear();
+const jaar = Number(Astro.url.searchParams.get("jaar")) || ditJaar;
+const vernieuw = Astro.url.searchParams.has("vernieuw");
+
+const data = await laad();
+const rijen = await overzicht(data, jaar, vernieuw);
+const totaalWinst = rijen.reduce((s, r) => s + r.winst, 0);
+const totaalSaldo = rijen.reduce((s, r) => s + r.saldo, 0);
+const bijgewerkt = data.bijgewerkt
+  ? new Date(data.bijgewerkt).toLocaleString("nl-BE", { timeZone: "Europe/Brussels" })
+  : "nog nooit";
+const jaren = [ditJaar, ditJaar - 1, ditJaar - 2];
+---
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iCount</title>
+  <style>
+    :root { --bg:#f6f7f9; --card:#fff; --text:#1b1f24; --muted:#667085; --line:#e4e7ec; --accent:#2457d6; --neg:#c0362c; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#111418; --card:#1a1f25; --text:#e8eaed; --muted:#98a2b3; --line:#2c333b; --accent:#7aa2ff; --neg:#ff7b72; } }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { margin:0 0 4px; font-size: 24px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .tot { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:12px; margin:20px 0; }
+    .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+    .tile b { display:block; font-size:26px; font-variant-numeric: tabular-nums; }
+    table { width:100%; border-collapse: collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; }
+    td.n, th.n { text-align:right; font-variant-numeric: tabular-nums; }
+    tfoot td { font-weight:600; border-bottom:0; }
+    .neg { color: var(--neg); }
+    h2 { margin: 32px 0 12px; font-size: 18px; }
+    .bvs { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap:12px; }
+    fieldset { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:0; min-width:0; }
+    label { display:block; font-size:13px; color:var(--muted); margin-top:8px; }
+    input { width:100%; padding:8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
+    button { font:inherit; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; }
+    .primary { background:var(--accent); color:#fff; margin-top:16px; padding:10px 20px; }
+    .link { background:none; color:var(--accent); padding:6px 0; }
+    .fout { background:#fdecea; color:#7f1d1d; padding:8px 12px; border-radius:8px; margin-top:12px; font-size:13px; }
+    .tag { font-size:11px; padding:2px 6px; border-radius:6px; background:var(--line); color:var(--muted); margin-left:6px; }
+    .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+    .bar select, .bar a { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; }
+    .rek { display:grid; grid-template-columns: 1.2fr 1.6fr 1fr 1.1fr; gap:6px; margin-top:6px; }
+    .reklabels { display:grid; grid-template-columns: 1.2fr 1.6fr 1fr 1.1fr; gap:6px; font-size:12px; color:var(--muted); margin-top:8px; }
+    .ok { background:#e7f6ec; color:#14532d; padding:8px 12px; border-radius:8px; margin-top:12px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>iCount</h1>
+  <div class="muted">Winst {jaar} uit Billit (excl. btw). Rekeninggegevens laatst aangepast: {bijgewerkt}</div>
+  <form class="bar" method="get">
+    <select name="jaar" onchange="this.form.submit()">
+      {jaren.map((j) => <option value={j} selected={j === jaar}>{j}</option>)}
+    </select>
+    <a href={`/?jaar=${jaar}&vernieuw=1`}>Vernieuwen uit Billit</a>
+  </form>
+  {opgeslagen && <div class="ok">Opgeslagen.</div>}
+  {rijen.filter((r) => r.fout).map((r) => <div class="fout"><b>{r.naam}</b>: {r.fout}</div>)}
+
+  <div class="tot">
+    <div class="tile"><span class="muted">Totale winst {jaar}</span><b class:list={{ neg: totaalWinst < 0 }}>{euro(totaalWinst)}</b></div>
+    <div class="tile"><span class="muted">Totaal rekeningsaldi</span><b class:list={{ neg: totaalSaldo < 0 }}>{euro(totaalSaldo)}</b></div>
+    <div class="tile"><span class="muted">Winst + saldi</span><b>{euro(totaalWinst + totaalSaldo)}</b></div>
+  </div>
+
+  <table>
+    <thead><tr><th>BV</th><th class="n">Omzet</th><th class="n">Kosten</th><th class="n">Winst</th><th class="n">Saldi</th></tr></thead>
+    <tbody>
+      {rijen.map((r) => (
+        <tr>
+          <td>{r.naam}<span class="tag">{r.billit ? "Billit" : "handmatig"}</span></td>
+          <td class="n">{r.omzet === null ? "–" : euro(r.omzet)}</td>
+          <td class="n">{r.kosten === null ? "–" : euro(r.kosten)}</td>
+          <td class:list={["n", { neg: r.winst < 0 }]}>{euro(r.winst)}</td>
+          <td class:list={["n", { neg: r.saldo < 0 }]}>{euro(r.saldo)}</td>
+        </tr>
+      ))}
+    </tbody>
+    <tfoot><tr><td>Totaal</td><td class="n">{euro(rijen.reduce((s, r) => s + (r.omzet ?? 0), 0))}</td><td class="n">{euro(rijen.reduce((s, r) => s + (r.kosten ?? 0), 0))}</td><td class="n">{euro(totaalWinst)}</td><td class="n">{euro(totaalSaldo)}</td></tr></tfoot>
+  </table>
+
+  <h2>Rekeningen</h2>
+  <table>
+    <thead><tr><th>BV</th><th>Rekening</th><th>IBAN</th><th class="n">Saldo op datum</th><th class="n">Billit sindsdien</th><th class="n">Nu</th></tr></thead>
+    <tbody>
+      {rijen.flatMap((r) => r.rekeningen.map((k) => (
+        <tr>
+          <td>{r.naam}</td><td>{k.naam}</td><td>{k.iban || "–"}</td>
+          <td class="n">{euro(k.saldo)} <span class="muted">({k.datum})</span></td>
+          <td class="n">{k.mutatie === null ? "–" : euro(k.mutatie)}</td>
+          <td class:list={["n", { neg: k.huidig < 0 }]}>{euro(k.huidig)}</td>
+        </tr>
+      )))}
+    </tbody>
+  </table>
+
+  <h2>Instellingen per BV</h2>
+  <form method="post">
+    <div class="bvs">
+      {data.bvs.map((bv, i) => (
+        <fieldset>
+          <label>Naam</label>
+          <input name={`bv${i}_naam`} value={bv.naam} />
+          {!rijen[i].billit && <>
+            <label>Winst (€), alleen zolang er geen Billit-sleutel is</label>
+            <input name={`bv${i}_winst`} value={bv.winstHandmatig} inputmode="decimal" />
+          </>}
+          {rijen[i].billit && <input type="hidden" name={`bv${i}_winst`} value={bv.winstHandmatig} />}
+          <div class="reklabels"><span>Rekening</span><span>IBAN</span><span>Saldo (€)</span><span>op datum</span></div>
+          <div data-reks={i}>
+            {bv.rekeningen.map((r) => (
+              <div class="rek">
+                <input name={`bv${i}_rek_naam`} value={r.naam} placeholder="Rekening" />
+                <input name={`bv${i}_rek_iban`} value={r.iban} placeholder="BE.." />
+                <input name={`bv${i}_rek_saldo`} value={r.saldo} inputmode="decimal" />
+                <input name={`bv${i}_rek_datum`} value={r.datum} type="date" />
+              </div>
+            ))}
+          </div>
+          <button type="button" class="link" data-add={i}>+ rekening</button>
+        </fieldset>
+      ))}
+    </div>
+    <button class="primary" type="submit">Opslaan</button>
+  </form>
+  <p class="muted">Vul per rekening het saldo op een datum in (bv. van je laatste uittreksel). Met een IBAN telt iCount de Billit-banktransacties na die datum erbij. Laat een rij leeg om ze te verwijderen.</p>
+</main>
+<script>
+  const vandaag = new Date().toISOString().slice(0, 10);
+  document.querySelectorAll<HTMLButtonElement>("[data-add]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = btn.dataset.add;
+      const row = document.createElement("div");
+      row.className = "rek";
+      row.innerHTML = `<input name="bv${i}_rek_naam" placeholder="Rekening" /><input name="bv${i}_rek_iban" placeholder="BE.." /><input name="bv${i}_rek_saldo" inputmode="decimal" /><input name="bv${i}_rek_datum" type="date" value="${vandaag}" />`;
+      document.querySelector(`[data-reks="${i}"]`)!.appendChild(row);
+    });
+  });
+</script>
+</body>
+</html>
