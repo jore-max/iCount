@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { veld, winstUitOrders, normTransacties, type Tx, type Winst, type InterneLeverancier } from "./reken";
+import { veld, winstUitOrders, openstaandUitOrders, type Openstaand, normTransacties, type Tx, type Winst, type InterneLeverancier } from "./reken";
 
 const E = env as unknown as Record<string, string | undefined>;
 
@@ -49,6 +49,19 @@ export async function winstVoorJaar(cfg: BillitCfg, jaar: number, intern?: Inter
     "/v1/orders" + q(`OrderDate ge datetime'${jaar}-01-01' and OrderDate le datetime'${jaar}-12-31'`),
   );
   return winstUitOrders(orders, intern);
+}
+
+// Onbetaalde verkoopfacturen, ongeacht het jaar. Lukt de filter op Paid niet, dan de facturen
+// van vorig en dit jaar (ook dan telt Paid per factuur).
+export async function openstaandeVerkoop(cfg: BillitCfg): Promise<Openstaand> {
+  let orders: any[];
+  try {
+    orders = await alle(cfg, "/v1/orders" + q("OrderDirection eq 'Income' and Paid eq false"));
+  } catch {
+    const vanaf = new Date().getFullYear() - 1;
+    orders = await alle(cfg, "/v1/orders" + q(`OrderDirection eq 'Income' and OrderDate ge datetime'${vanaf}-01-01'`));
+  }
+  return openstaandUitOrders(orders);
 }
 
 export type Bedrijf = { naam: string; btw: string };

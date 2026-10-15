@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
-import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier } from "./reken";
-import { cfgVoor, winstVoorJaar, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
+import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier, type Openstaand } from "./reken";
+import { cfgVoor, winstVoorJaar, openstaandeVerkoop, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
 
 // Rekening: saldo is het saldo op `datum`; Billit-transacties op dat IBAN na die datum worden erbij geteld.
 export type Rekening = { naam: string; iban: string; saldo: number; datum: string };
@@ -87,6 +87,7 @@ export type BvRegel = {
   kosten: number | null;
   winst: number;
   maanden: Maand[] | null;
+  openstaand: Openstaand | null; // nog te ontvangen verkoopfacturen (enkel BV's in de winst)
   saldo: number;
   rekeningen: RekeningRegel[];
 };
@@ -140,6 +141,7 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
       let maanden: Maand[] | null = null;
       let internBedrag = 0;
       let tx: Tx[] = [];
+      let openstaand: Openstaand | null = null;
 
       if (cfg) {
         try {
@@ -157,6 +159,11 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
         } catch (e) {
           fout = e instanceof Error ? e.message : String(e);
         }
+        if (bv.inWinst && !fout) {
+          try {
+            openstaand = await gecached(`cache:open:${i + 1}`, vernieuw, () => openstaandeVerkoop(cfg));
+          } catch {}
+        }
       }
 
       const rekeningen = bv.rekeningen.map((r) => {
@@ -173,6 +180,7 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
         kosten,
         winst,
         maanden,
+        openstaand,
         saldo: rekeningen.reduce((s, r) => s + r.huidig, 0),
         rekeningen,
       };
