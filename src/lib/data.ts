@@ -161,7 +161,7 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
         }
         if (bv.inWinst && !fout) {
           try {
-            openstaand = await gecached(`cache:open:${i + 1}`, vernieuw, () => openstaandeVerkoop(cfg));
+            openstaand = await gecached(`cache:open2:${i + 1}`, vernieuw, () => openstaandeVerkoop(cfg));
           } catch {}
         }
       }

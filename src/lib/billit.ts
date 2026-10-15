@@ -55,13 +55,16 @@ export async function winstVoorJaar(cfg: BillitCfg, jaar: number, intern?: Inter
 // van vorig en dit jaar (ook dan telt Paid per factuur).
 export async function openstaandeVerkoop(cfg: BillitCfg): Promise<Openstaand> {
   let orders: any[];
+  let filter = "Paid eq false";
   try {
     orders = await alle(cfg, "/v1/orders" + q("OrderDirection eq 'Income' and Paid eq false"));
-  } catch {
+  } catch (e) {
     const vanaf = new Date().getFullYear() - 1;
+    filter = `vanaf ${vanaf} (${e instanceof Error ? e.message.slice(0, 120) : e})`;
     orders = await alle(cfg, "/v1/orders" + q(`OrderDirection eq 'Income' and OrderDate ge datetime'${vanaf}-01-01'`));
   }
-  return openstaandUitOrders(orders);
+  const o = openstaandUitOrders(orders);
+  return { ...o, detail: { ...o.detail, filter } };
 }
 
 export type Bedrijf = { naam: string; btw: string };

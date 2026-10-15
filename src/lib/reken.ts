@@ -65,30 +65,38 @@ export function winstUitOrders(orders: Obj[], intern: InterneLeverancier = { btw
   return { omzet, kosten, winst: omzet - kosten, facturen, maanden, intern: internTotaal };
 }
 
-// Nog te ontvangen: verkoopfacturen (min creditnota's) die nog niet betaald zijn, incl. btw.
+// Nog te ontvangen: verkoopfacturen die nog niet (volledig) betaald zijn, incl. btw.
 // Per factuur: Paid = true telt niet; anders het openstaande bedrag (ToPay) of het volledige bedrag.
-// `vervallen` is het deel waarvan de vervaldag voorbij is.
-export type Openstaand = { bedrag: number; aantal: number; vervallen: number };
+// Creditnota's tellen niet apart: Billit trekt een gekoppelde creditnota al af van wat op de factuur
+// nog te betalen is, en de creditnota zelf blijft "onbetaald" staan.
+// `vervallen` is het deel waarvan de vervaldag voorbij is. `detail` dient om na te kijken.
+export type Openstaand = { bedrag: number; aantal: number; vervallen: number; detail?: Record<string, unknown> };
 
 export function openstaandUitOrders(orders: Obj[], vandaag = new Date().toISOString().slice(0, 10)): Openstaand {
   let bedrag = 0, aantal = 0, vervallen = 0;
+  const d = { orders: orders.length, betaald: 0, concept: 0, zonderToPay: 0, totaalIncl: 0, creditnotas: 0, creditBedrag: 0, statussen: {} as Record<string, number> };
   for (const o of orders) {
     const type = String(veld(o, "OrderType") ?? "").toLowerCase();
     const credit = type.includes("credit");
     if (!credit && type !== "invoice") continue;
     if (String(veld(o, "OrderDirection") ?? "").toLowerCase() !== "income") continue;
-    if (/draft|concept/i.test(String(veld(o, "OrderStatus") ?? ""))) continue;
+    const status = String(veld(o, "OrderStatus") ?? "");
+    d.statussen[status] = (d.statussen[status] ?? 0) + 1;
+    if (/draft|concept/i.test(status)) { d.concept++; continue; }
     const betaald = veld(o, "Paid", "IsPaid");
-    if (betaald === true || String(betaald).toLowerCase() === "true") continue;
+    if (betaald === true || String(betaald).toLowerCase() === "true") { d.betaald++; continue; }
     const rest = veld(o, "ToPay", "AmountToPay", "OpenAmount", "Outstanding");
-    const open = Math.abs(num(rest ?? veld(o, "TotalIncl"))) * (credit ? -1 : 1);
+    if (credit) { d.creditnotas++; d.creditBedrag += Math.abs(num(rest ?? veld(o, "TotalIncl"))); continue; }
+    if (rest === undefined || rest === null) d.zonderToPay++;
+    d.totaalIncl += num(veld(o, "TotalIncl"));
+    const open = num(rest ?? veld(o, "TotalIncl"));
     if (Math.abs(open) < 0.005) continue;
     bedrag += open;
     aantal++;
     const vervaldag = String(veld(o, "ExpiryDate", "DueDate", "PaymentDueDate") ?? "").slice(0, 10);
     if (vervaldag && vervaldag < vandaag) vervallen += open;
   }
-  return { bedrag, aantal, vervallen };
+  return { bedrag, aantal, vervallen, detail: { ...d, velden: orders[0] ? Object.keys(orders[0]) : [] } };
 }
 
 const normIban = (s: any) => String(s ?? "").replace(/\s/g, "").toUpperCase();
