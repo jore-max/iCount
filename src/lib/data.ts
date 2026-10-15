@@ -146,7 +146,7 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
       if (cfg) {
         try {
           const uitsluiten = bv.inWinst ? intern : { btw: [], namen: [] };
-          const w = await gecached(`cache:winst3:${i + 1}:${jaar}:${bv.inWinst ? sleutel : ""}`, vernieuw, () =>
+          const w = await gecached(`cache:winst4:${i + 1}:${jaar}:${bv.inWinst ? sleutel : ""}`, vernieuw, () =>
             winstVoorJaar(cfg, jaar, uitsluiten),
           );
           ({ omzet, kosten, winst, maanden } = w);

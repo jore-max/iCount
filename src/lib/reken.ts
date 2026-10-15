@@ -40,7 +40,7 @@ export function isIntern(o: Obj, intern: InterneLeverancier): boolean {
   return !!naam && intern.namen.some((n) => normNaam(n) !== "" && naam.includes(normNaam(n)));
 }
 
-// Winst = verkoopfacturen - verkoopcreditnota's - aankoopfacturen + aankoopcreditnota's (excl. btw),
+// Winst = verkoopfacturen - verkoopcreditnota's - aankoopfacturen + aankoopcreditnota's (excl. btw, zonder ontwerpen),
 // ook per maand (index 0 = januari) op basis van OrderDate.
 // Aankopen bij een interne leverancier tellen niet als kost (ze staan apart in `intern`).
 export function winstUitOrders(orders: Obj[], intern: InterneLeverancier = { btw: [], namen: [] }): Winst {
@@ -50,6 +50,7 @@ export function winstUitOrders(orders: Obj[], intern: InterneLeverancier = { btw
     const type = String(veld(o, "OrderType") ?? "").toLowerCase();
     const credit = type.includes("credit");
     if (!credit && type !== "invoice") continue; // offertes, bestelbonnen, ... tellen niet
+    if (/draft|concept/i.test(String(veld(o, "OrderStatus") ?? ""))) continue; // ontwerpen tellen niet
     const richting = String(veld(o, "OrderDirection") ?? "").toLowerCase();
     const bedrag = Math.abs(num(veld(o, "TotalExcl"))) * (credit ? -1 : 1);
     const m = new Date(String(veld(o, "OrderDate") ?? "")).getMonth();
