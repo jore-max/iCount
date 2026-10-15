@@ -112,7 +112,10 @@ export function normTransacties(transacties: Obj[]): Tx[] {
     .map((t) => ({
       iban: normIban(veld(t, "IBAN", "BankAccountIBAN", "BankAccountNumber", "AccountNumber", "OwnIBAN")),
       datum: String(veld(t, "ValueDate", "TransactionDate", "Date", "BookingDate") ?? "").slice(0, 10),
-      bedrag: num(veld(t, "TotalAmount", "Amount", "TransactionAmount")),
+      // Billit geeft TotalAmount altijd positief; TransactionType "Debet" is geld dat buitengaat.
+      bedrag: /^deb/i.test(String(veld(t, "TransactionType") ?? ""))
+        ? -Math.abs(num(veld(t, "TotalAmount", "Amount", "TransactionAmount")))
+        : num(veld(t, "TotalAmount", "Amount", "TransactionAmount")),
     }))
     .filter((t) => t.iban);
 }
