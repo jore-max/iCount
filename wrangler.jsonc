@@ -1,0 +1,13 @@
+{
+  "name": "icount",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  "routes": [{ "pattern": "icount.ibite.be", "custom_domain": true }],
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    { "binding": "ICOUNT", "id": "bf11a00146214d968cb32a6bbb19e6dc" },
+    { "binding": "SESSION", "id": "8711040c31c644218eed3139a749b3a2" }
+  ]
+}
