@@ -1,6 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import { laad, bewaar, uitForm, bedrijvenUitBillit, standaardNaam } from "../lib/data";
+import { laad, bewaar, uitForm, bedrijvenUitBillit, metBillit, standaardNaam } from "../lib/data";
 import { cfgVoor } from "../lib/billit";
 
 if (Astro.request.method === "POST") {
@@ -10,6 +10,7 @@ if (Astro.request.method === "POST") {
 const opgeslagen = Astro.url.searchParams.has("ok");
 const data = await laad();
 const bedrijven = await bedrijvenUitBillit();
+const inWinst = metBillit(data, bedrijven).bvs.map((bv) => bv.inWinst);
 const billit = [1, 2, 3, 4].map((n) => !!cfgVoor(n));
 const bijgewerkt = data.bijgewerkt
   ? new Date(data.bijgewerkt).toLocaleString("nl-BE", { timeZone: "Europe/Brussels", dateStyle: "medium", timeStyle: "short" })
@@ -33,7 +34,7 @@ const bijgewerkt = data.bijgewerkt
           </div>
 
           <div class="opties">
-            <label class="check"><input type="checkbox" name={`bv${i}_inwinst`} checked={bv.inWinst} /> Telt mee in de winst</label>
+            <label class="check"><input type="checkbox" name={`bv${i}_inwinst`} checked={inWinst[i]} /> Telt mee in de winst</label>
             <label class="btw">Btw-nummer<input name={`bv${i}_btw`} value={bv.btw} placeholder={bedrijven[i]?.btw || "uit Billit"} /></label>
           </div>
           {billit[i]

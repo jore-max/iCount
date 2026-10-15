@@ -6,7 +6,9 @@ import { cfgVoor, winstVoorJaar, transactiesVanaf, eigenBedrijf, type Bedrijf } 
 export type Rekening = { naam: string; iban: string; saldo: number; datum: string };
 // inWinst: false voor een BV die aan de andere factureert (bv. Jove). Die telt niet mee in de winst,
 // en haar facturen worden uit de kosten van de andere BV's gehaald (herkend op btw-nummer of naam).
-export type Bv = { naam: string; btw: string; inWinst: boolean; winstHandmatig: number; rekeningen: Rekening[] };
+// Niet ingevuld (oudere opslag) = automatisch: de BV die in Billit "Jove" heet telt niet mee, de rest wel.
+export type Bv = { naam: string; btw: string; inWinst?: boolean; winstHandmatig: number; rekeningen: Rekening[] };
+export type BvVol = Bv & { inWinst: boolean };
 export type Data = { bvs: Bv[]; bijgewerkt: string | null };
 
 const KEY = "data";
@@ -32,7 +34,6 @@ export async function laad(): Promise<Data> {
   for (const bv of d.bvs) {
     bv.winstHandmatig ??= bv.winst ?? 0;
     bv.btw ??= "";
-    bv.inWinst ??= true;
     for (const r of bv.rekeningen) { r.iban ??= ""; r.datum ??= vandaag(); }
   }
   return d as Data;
@@ -103,20 +104,26 @@ export async function bedrijvenUitBillit(vernieuw = false): Promise<Bedrijf[]> {
   );
 }
 
+const isJove = (naam: string | undefined) => /^\s*jove\b/i.test(naam ?? "");
+
 // Vult de namen en btw-nummers aan met wat Billit weet, zonder wat je zelf invulde te overschrijven.
-export function metBillit(data: Data, bedrijven: Bedrijf[]): Data {
+export function metBillit(data: Data, bedrijven: Bedrijf[]): { bvs: BvVol[]; bijgewerkt: string | null } {
   return {
     ...data,
-    bvs: data.bvs.map((bv, i) => ({
-      ...bv,
-      naam: standaardNaam(bv.naam) && bedrijven[i]?.naam ? bedrijven[i].naam : bv.naam,
-      btw: bv.btw || bedrijven[i]?.btw || "",
-    })),
+    bvs: data.bvs.map((bv, i) => {
+      const naam = standaardNaam(bv.naam) && bedrijven[i]?.naam ? bedrijven[i].naam : bv.naam;
+      return {
+        ...bv,
+        naam,
+        btw: bv.btw || bedrijven[i]?.btw || "",
+        inWinst: bv.inWinst ?? !(isJove(naam) || isJove(bedrijven[i]?.naam)),
+      };
+    }),
   };
 }
 
 // Btw-nummers en namen van de BV's die buiten de winst blijven.
-function interneLeveranciers(data: Data): InterneLeverancier {
+function interneLeveranciers(data: { bvs: BvVol[] }): InterneLeverancier {
   const uit = data.bvs.filter((bv) => !bv.inWinst);
   return { btw: uit.map((bv) => bv.btw).filter(Boolean), namen: uit.map((bv) => bv.naam).filter((n) => !standaardNaam(n)) };
 }

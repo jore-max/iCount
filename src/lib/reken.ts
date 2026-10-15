@@ -36,7 +36,7 @@ export function isIntern(o: Obj, intern: InterneLeverancier): boolean {
   const cp = veld(o, "CounterParty", "Counterparty") ?? {};
   const btw = normBtw(veld(cp, "VATNumber", "VatNumber", "VAT", "EnterpriseNumber"));
   if (btw && intern.btw.some((b) => normBtw(b) === btw)) return true;
-  const naam = normNaam(veld(cp, "DisplayName", "Name", "CommercialName"));
+  const naam = normNaam(veld(cp, "DisplayName", "Name", "CommercialName") ?? veld(o, "CounterPartyName", "SupplierName", "PartyName"));
   return !!naam && intern.namen.some((n) => normNaam(n) !== "" && naam.includes(normNaam(n)));
 }
 
