@@ -6,6 +6,9 @@ Klein Astro-programma op Cloudflare Workers dat de winst van 4 BV's en alle reke
 - **Rekeningsaldi**: Billit heeft geen API voor het saldo zelf. Je vult per rekening één keer een saldo op een datum in (bv. van een uittreksel) met het IBAN; iCount telt de Billit-banktransacties na die datum erbij.
 - Billit-resultaten worden 15 minuten bewaard in KV; "Vernieuwen uit Billit" haalt ze opnieuw op.
 - Een BV zonder Billit-sleutel valt terug op handmatig ingevulde winst.
+- Een BV die aan de andere factureert (Jove) zet je op "Telt mee in de winst: nee". Haar winst telt dan niet mee,
+  en haar facturen (herkend op btw-nummer uit Billit, of op naam) worden uit de kosten van de andere BV's gehaald,
+  zodat niets dubbel telt. Haar rekeningsaldi tellen wel mee in de liquide middelen.
 
 ## Billit-sleutel instellen
 

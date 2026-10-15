@@ -9,10 +9,14 @@ const vernieuw = Astro.url.searchParams.has("vernieuw");
 
 const data = await laad();
 const rijen = await overzicht(data, jaar, vernieuw);
-const totaalWinst = rijen.reduce((s, r) => s + r.winst, 0);
+// BV's die buiten de winst blijven (zoals Jove) tellen niet mee in winst, omzet, kosten en grafiek.
+const inWinst = rijen.filter((r) => r.inWinst);
+const buiten = rijen.filter((r) => !r.inWinst);
+const totaalIntern = inWinst.reduce((s, r) => s + r.intern, 0);
+const totaalWinst = inWinst.reduce((s, r) => s + r.winst, 0);
 const totaalSaldo = rijen.reduce((s, r) => s + r.saldo, 0);
-const totaalOmzet = rijen.reduce((s, r) => s + (r.omzet ?? 0), 0);
-const totaalKosten = rijen.reduce((s, r) => s + (r.kosten ?? 0), 0);
+const totaalOmzet = inWinst.reduce((s, r) => s + (r.omzet ?? 0), 0);
+const totaalKosten = inWinst.reduce((s, r) => s + (r.kosten ?? 0), 0);
 const rekeningen = rijen.flatMap((r, i) => r.rekeningen.map((k) => ({ ...k, bv: r.naam, i })));
 const jaren = [ditJaar - 2, ditJaar - 1, ditJaar];
 const pct = (n: number) => `${n.toFixed(1).replace(".", ",")}%`;
@@ -26,7 +30,7 @@ const kort = (n: number) => {
 
 // ---- Grafiek: winst per maand, gestapeld per BV ----
 const MAANDEN = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
-const reeksen = rijen.map((r, i) => ({ naam: r.naam, i, m: r.maanden })).filter((r) => r.m);
+const reeksen = rijen.map((r, i) => ({ naam: r.naam, i, m: r.maanden, in: r.inWinst })).filter((r) => r.m && r.in);
 const W = 960, H = 300, L = 64, R = 8, T = 12, B = 30;
 const pw = W - L - R, ph = H - T - B;
 const perMaand = MAANDEN.map((_, m) => reeksen.map((r) => ({ i: r.i, naam: r.naam, v: r.m![m].omzet - r.m![m].kosten })));
@@ -60,7 +64,7 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
   <div class="head">
     <div>
       <h1>Overzicht</h1>
-      <p class="t2">Geconsolideerd over {rijen.length} BV's · winst exclusief btw uit Billit</p>
+      <p class="t2">Geconsolideerd over {rijen.length} BV's · winst exclusief btw uit Billit{buiten.length > 0 && <> · {buiten.map((r) => r.naam).join(", ")} buiten de winst</>}</p>
     </div>
     <div class="acties">
       <div class="seg">
@@ -84,7 +88,7 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
     <div class="kpi">
       <span class="lbl">Winst {jaar}</span>
       <b class:list={["num", { neg: totaalWinst < 0 }]}>{euro(totaalWinst)}</b>
-      <span class="t3">{totaalOmzet ? <>marge <span class="t2">{pct((totaalWinst / totaalOmzet) * 100)}</span> op {kort(totaalOmzet)} omzet</> : "nog geen omzet"}</span>
+      <span class="t3">{totaalOmzet ? <>marge <span class="t2">{pct((totaalWinst / totaalOmzet) * 100)}</span> op {kort(totaalOmzet)} omzet</> : "nog geen omzet"}{totaalIntern !== 0 && <> · {kort(totaalIntern)} van {buiten.map((r) => r.naam).join(", ")} weggelaten</>}</span>
     </div>
     <div class="kpi">
       <span class="lbl">Liquide middelen</span>
@@ -133,11 +137,11 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
         <thead><tr><th>BV</th><th class="r verberg">Omzet</th><th class="r verberg">Kosten</th><th class="r">Winst</th><th class="r">Marge</th></tr></thead>
         <tbody>
           {rijen.map((r, i) => (
-            <tr>
-              <td><span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span>{!r.billit && <span class="chip">handmatig</span>}</td>
+            <tr class:list={{ buiten: !r.inWinst }}>
+              <td><span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span>{!r.inWinst ? <span class="chip">niet in winst</span> : !r.billit && <span class="chip">handmatig</span>}</td>
               <td class="r num t2 verberg">{r.omzet === null ? "–" : euro(r.omzet)}</td>
-              <td class="r num t2 verberg">{r.kosten === null ? "–" : euro(r.kosten)}</td>
-              <td class:list={["r num sterk", { neg: r.winst < 0 }]}>{euro(r.winst)}</td>
+              <td class="r num t2 verberg">{r.kosten === null ? "–" : euro(r.kosten)}{r.intern !== 0 && <span class="sub" title={`Facturen van ${buiten.map((b) => b.naam).join(", ")} zijn niet meegeteld`}>excl. {euro(r.intern)} intern</span>}</td>
+              <td class:list={["r num sterk", { neg: r.winst < 0 && r.inWinst }]}>{euro(r.winst)}</td>
               <td class="r num t2">{marge(r.winst, r.omzet) === null ? "–" : pct(marge(r.winst, r.omzet)!)}</td>
             </tr>
           ))}
@@ -256,6 +260,9 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
   .sterk { font-weight: 600; }
   .bvn { font-weight: 500; }
   td .chip { margin-left: 8px; }
+  td .sub { display: block; font-size: 11px; color: var(--text-3); }
+  tr.buiten td { color: var(--text-3); }
+  tr.buiten td.sterk { font-weight: 500; text-decoration: line-through; text-decoration-color: var(--line-2); }
 
   .liq { padding: 18px 20px; }
   .liq ul { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }

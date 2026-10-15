@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { veld, winstUitOrders, normTransacties, type Tx, type Winst } from "./reken";
+import { veld, winstUitOrders, normTransacties, type Tx, type Winst, type InterneLeverancier } from "./reken";
 
 const E = env as unknown as Record<string, string | undefined>;
 
@@ -43,12 +43,23 @@ async function alle(cfg: BillitCfg, pad: string, maxPaginas = 100): Promise<any[
 
 const q = (filter: string) => "?$filter=" + encodeURIComponent(filter);
 
-export async function winstVoorJaar(cfg: BillitCfg, jaar: number): Promise<Winst> {
+export async function winstVoorJaar(cfg: BillitCfg, jaar: number, intern?: InterneLeverancier): Promise<Winst> {
   const orders = await alle(
     cfg,
     "/v1/orders" + q(`OrderDate ge datetime'${jaar}-01-01' and OrderDate le datetime'${jaar}-12-31'`),
   );
-  return winstUitOrders(orders);
+  return winstUitOrders(orders, intern);
+}
+
+// Btw-nummer van het bedrijf zelf (de party van deze sleutel/PartyID).
+export async function eigenBtw(cfg: BillitCfg): Promise<string> {
+  if (!cfg.partyId) return "";
+  try {
+    const p = await get(cfg, `/v1/parties/${cfg.partyId}`);
+    return String(veld(p, "VATNumber", "VatNumber", "VAT") ?? "");
+  } catch {
+    return "";
+  }
 }
 
 // Banktransacties na een datum (YYYY-MM-DD).
