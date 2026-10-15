@@ -85,9 +85,9 @@ const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
 
   <section class="panel kpis">
     <div class="kpi">
-      <span class="lbl">Winst + liquide middelen</span>
-      <b class="num groot">{euro(totaalWinst + totaalSaldo)}</b>
-      <span class="t3">stand {new Date().toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long" })}</span>
+      <span class="lbl">Liquide middelen + te ontvangen</span>
+      <b class="num groot">{euro(totaalSaldo + totaalOpen)}</b>
+      <span class="t3">op de rekeningen plus onbetaalde verkoopfacturen · stand {new Date().toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long" })}</span>
     </div>
     <div class="kpi">
       <span class="lbl">Winst {jaar}</span>
