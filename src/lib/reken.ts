@@ -65,6 +65,32 @@ export function winstUitOrders(orders: Obj[], intern: InterneLeverancier = { btw
   return { omzet, kosten, winst: omzet - kosten, facturen, maanden, intern: internTotaal };
 }
 
+// Nog te ontvangen: verkoopfacturen (min creditnota's) die nog niet betaald zijn, incl. btw.
+// Per factuur: Paid = true telt niet; anders het openstaande bedrag (ToPay) of het volledige bedrag.
+// `vervallen` is het deel waarvan de vervaldag voorbij is.
+export type Openstaand = { bedrag: number; aantal: number; vervallen: number };
+
+export function openstaandUitOrders(orders: Obj[], vandaag = new Date().toISOString().slice(0, 10)): Openstaand {
+  let bedrag = 0, aantal = 0, vervallen = 0;
+  for (const o of orders) {
+    const type = String(veld(o, "OrderType") ?? "").toLowerCase();
+    const credit = type.includes("credit");
+    if (!credit && type !== "invoice") continue;
+    if (String(veld(o, "OrderDirection") ?? "").toLowerCase() !== "income") continue;
+    if (/draft|concept/i.test(String(veld(o, "OrderStatus") ?? ""))) continue;
+    const betaald = veld(o, "Paid", "IsPaid");
+    if (betaald === true || String(betaald).toLowerCase() === "true") continue;
+    const rest = veld(o, "ToPay", "AmountToPay", "OpenAmount", "Outstanding");
+    const open = Math.abs(num(rest ?? veld(o, "TotalIncl"))) * (credit ? -1 : 1);
+    if (Math.abs(open) < 0.005) continue;
+    bedrag += open;
+    aantal++;
+    const vervaldag = String(veld(o, "ExpiryDate", "DueDate", "PaymentDueDate") ?? "").slice(0, 10);
+    if (vervaldag && vervaldag < vandaag) vervallen += open;
+  }
+  return { bedrag, aantal, vervallen };
+}
+
 const normIban = (s: any) => String(s ?? "").replace(/\s/g, "").toUpperCase();
 
 export type Tx = { iban: string; datum: string; bedrag: number };
