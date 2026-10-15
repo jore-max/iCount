@@ -1,10 +1,12 @@
 import { env } from "cloudflare:workers";
-import { bedrag, normIban, mutatieNa, type Tx, type Maand } from "./reken";
-import { cfgVoor, winstVoorJaar, transactiesVanaf } from "./billit";
+import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier } from "./reken";
+import { cfgVoor, winstVoorJaar, transactiesVanaf, eigenBtw } from "./billit";
 
 // Rekening: saldo is het saldo op `datum`; Billit-transacties op dat IBAN na die datum worden erbij geteld.
 export type Rekening = { naam: string; iban: string; saldo: number; datum: string };
-export type Bv = { naam: string; winstHandmatig: number; rekeningen: Rekening[] };
+// inWinst: false voor een BV die aan de andere factureert (bv. Jove). Die telt niet mee in de winst,
+// en haar facturen worden uit de kosten van de andere BV's gehaald (herkend op btw-nummer of naam).
+export type Bv = { naam: string; btw: string; inWinst: boolean; winstHandmatig: number; rekeningen: Rekening[] };
 export type Data = { bvs: Bv[]; bijgewerkt: string | null };
 
 const KEY = "data";
@@ -15,6 +17,8 @@ const vandaag = () => new Date().toISOString().slice(0, 10);
 const leeg = (): Data => ({
   bvs: [1, 2, 3, 4].map((n) => ({
     naam: `BV ${n}`,
+    btw: "",
+    inWinst: true,
     winstHandmatig: 0,
     rekeningen: [{ naam: "Zichtrekening", iban: "", saldo: 0, datum: vandaag() }],
   })),
@@ -27,6 +31,8 @@ export async function laad(): Promise<Data> {
   // oudere versie had `winst` en rekeningen zonder iban/datum
   for (const bv of d.bvs) {
     bv.winstHandmatig ??= bv.winst ?? 0;
+    bv.btw ??= "";
+    bv.inWinst ??= true;
     for (const r of bv.rekeningen) { r.iban ??= ""; r.datum ??= vandaag(); }
   }
   return d as Data;
@@ -50,6 +56,8 @@ export function uitForm(form: FormData): Data {
       .filter((r) => r.naam !== "" || r.iban !== "" || r.saldo !== 0);
     return {
       naam: String(form.get(`bv${i}_naam`) ?? "").trim() || `BV ${i + 1}`,
+      btw: String(form.get(`bv${i}_btw`) ?? "").trim().toUpperCase(),
+      inWinst: form.get(`bv${i}_inwinst`) === "on",
       winstHandmatig: bedrag(form.get(`bv${i}_winst`)),
       rekeningen,
     };
@@ -70,6 +78,8 @@ async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T
 export type RekeningRegel = Rekening & { mutatie: number | null; huidig: number };
 export type BvRegel = {
   naam: string;
+  inWinst: boolean;
+  intern: number; // weggelaten aankopen bij een BV die buiten de winst blijft
   billit: boolean;
   fout: string | null;
   omzet: number | null;
@@ -80,19 +90,39 @@ export type BvRegel = {
   rekeningen: RekeningRegel[];
 };
 
+// Btw-nummers en namen van de BV's die buiten de winst blijven.
+async function interneLeveranciers(data: Data, vernieuw: boolean): Promise<InterneLeverancier> {
+  const uit = data.bvs.map((bv, i) => ({ bv, n: i + 1 })).filter((x) => !x.bv.inWinst);
+  const btw = await Promise.all(
+    uit.map(async ({ bv, n }) => {
+      if (bv.btw) return bv.btw;
+      const cfg = cfgVoor(n);
+      return cfg ? gecached(`cache:btw:${n}`, vernieuw, () => eigenBtw(cfg)) : "";
+    }),
+  );
+  return { btw: btw.filter(Boolean), namen: uit.map((x) => x.bv.naam) };
+}
+
 export async function overzicht(data: Data, jaar: number, vernieuw: boolean): Promise<BvRegel[]> {
+  const intern = await interneLeveranciers(data, vernieuw);
+  const sleutel = encodeURIComponent([...intern.btw, ...intern.namen].join("|"));
   return Promise.all(
     data.bvs.map(async (bv, i): Promise<BvRegel> => {
       const cfg = cfgVoor(i + 1);
       let fout: string | null = null;
       let omzet: number | null = null, kosten: number | null = null, winst = bv.winstHandmatig;
       let maanden: Maand[] | null = null;
+      let internBedrag = 0;
       let tx: Tx[] = [];
 
       if (cfg) {
         try {
-          const w = await gecached(`cache:winst2:${i + 1}:${jaar}`, vernieuw, () => winstVoorJaar(cfg, jaar));
+          const uitsluiten = bv.inWinst ? intern : { btw: [], namen: [] };
+          const w = await gecached(`cache:winst3:${i + 1}:${jaar}:${bv.inWinst ? sleutel : ""}`, vernieuw, () =>
+            winstVoorJaar(cfg, jaar, uitsluiten),
+          );
           ({ omzet, kosten, winst, maanden } = w);
+          internBedrag = w.intern;
           const metIban = bv.rekeningen.filter((r) => r.iban);
           if (metIban.length) {
             const vanaf = metIban.map((r) => r.datum).sort()[0];
@@ -109,6 +139,8 @@ export async function overzicht(data: Data, jaar: number, vernieuw: boolean): Pr
       });
       return {
         naam: bv.naam,
+        inWinst: bv.inWinst,
+        intern: internBedrag,
         billit: !!cfg,
         fout,
         omzet,

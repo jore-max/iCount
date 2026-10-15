@@ -15,12 +15,36 @@ export function veld(o: Obj, ...namen: string[]): any {
 const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export type Maand = { omzet: number; kosten: number };
-export type Winst = { omzet: number; kosten: number; winst: number; facturen: number; maanden: Maand[] };
+export type Winst = {
+  omzet: number;
+  kosten: number;
+  winst: number;
+  facturen: number;
+  maanden: Maand[];
+  intern: number; // aankoopfacturen van een eigen BV die buiten de winst blijft, niet in `kosten`
+};
+
+// Een eigen BV die factureert aan de andere (bv. Jove): op btw-nummer of naam herkennen.
+export type InterneLeverancier = { btw: string[]; namen: string[] };
+
+// BE0123.456.789 -> 123456789 (voorloopnullen weg, zodat BE0... en 0... gelijk zijn)
+export const normBtw = (v: unknown) => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
+const normNaam = (v: unknown) =>
+  String(v ?? "").toLowerCase().replace(/\b(bv|bvba|nv|srl|sprl)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+export function isIntern(o: Obj, intern: InterneLeverancier): boolean {
+  const cp = veld(o, "CounterParty", "Counterparty") ?? {};
+  const btw = normBtw(veld(cp, "VATNumber", "VatNumber", "VAT", "EnterpriseNumber"));
+  if (btw && intern.btw.some((b) => normBtw(b) === btw)) return true;
+  const naam = normNaam(veld(cp, "DisplayName", "Name", "CommercialName"));
+  return !!naam && intern.namen.some((n) => normNaam(n) !== "" && naam.includes(normNaam(n)));
+}
 
 // Winst = verkoopfacturen - verkoopcreditnota's - aankoopfacturen + aankoopcreditnota's (excl. btw),
 // ook per maand (index 0 = januari) op basis van OrderDate.
-export function winstUitOrders(orders: Obj[]): Winst {
-  let omzet = 0, kosten = 0, facturen = 0;
+// Aankopen bij een interne leverancier tellen niet als kost (ze staan apart in `intern`).
+export function winstUitOrders(orders: Obj[], intern: InterneLeverancier = { btw: [], namen: [] }): Winst {
+  let omzet = 0, kosten = 0, facturen = 0, internTotaal = 0;
   const maanden: Maand[] = Array.from({ length: 12 }, () => ({ omzet: 0, kosten: 0 }));
   for (const o of orders) {
     const type = String(veld(o, "OrderType") ?? "").toLowerCase();
@@ -31,11 +55,14 @@ export function winstUitOrders(orders: Obj[]): Winst {
     const m = new Date(String(veld(o, "OrderDate") ?? "")).getMonth();
     const maand = Number.isNaN(m) ? null : maanden[m];
     if (richting === "income") { omzet += bedrag; if (maand) maand.omzet += bedrag; }
-    else if (richting === "cost") { kosten += bedrag; if (maand) maand.kosten += bedrag; }
+    else if (richting === "cost") {
+      if (isIntern(o, intern)) { internTotaal += bedrag; continue; }
+      kosten += bedrag; if (maand) maand.kosten += bedrag;
+    }
     else continue;
     facturen++;
   }
-  return { omzet, kosten, winst: omzet - kosten, facturen, maanden };
+  return { omzet, kosten, winst: omzet - kosten, facturen, maanden, intern: internTotaal };
 }
 
 const normIban = (s: any) => String(s ?? "").replace(/\s/g, "").toUpperCase();

@@ -31,6 +31,10 @@ const bijgewerkt = data.bijgewerkt
             {billit[i] ? <span class="chip live">Billit</span> : <span class="chip">Handmatig</span>}
           </div>
 
+          <div class="opties">
+            <label class="check"><input type="checkbox" name={`bv${i}_inwinst`} checked={bv.inWinst} /> Telt mee in de winst</label>
+            <label class="btw">Btw-nummer<input name={`bv${i}_btw`} value={bv.btw} placeholder="BE0123456789" /></label>
+          </div>
           {billit[i]
             ? <input type="hidden" name={`bv${i}_winst`} value={bv.winstHandmatig} />
             : <label class="veld">Winst (€)<input name={`bv${i}_winst`} value={bv.winstHandmatig} inputmode="decimal" /><small>Geen Billit-PartyID ingesteld voor deze BV, dus vul je de winst zelf in.</small></label>}
@@ -52,7 +56,7 @@ const bijgewerkt = data.bijgewerkt
       ))}
     </div>
     <div class="bar">
-      <p class="t3">Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
+      <p class="t3">Zet "Telt mee in de winst" uit voor een BV die aan de andere factureert (zoals Jove): haar winst telt dan niet mee, en haar facturen worden uit de kosten van de andere BV's gehaald. Herkenning gebeurt op btw-nummer (leeg = uit Billit) of op naam. Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
       <button class="btn primary" type="submit">Opslaan</button>
     </div>
   </form>
@@ -84,8 +88,13 @@ const bijgewerkt = data.bijgewerkt
   .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
   input { width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--text); min-width: 0; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
   input:focus { outline: 3px solid rgba(42,120,214,.18); border-color: #2a78d6; }
+  input::placeholder { color: #b6bac3; }
   input.naam { font-size: 16px; font-weight: 600; border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; }
   input.naam:hover { border-color: var(--line); }
+  .opties { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+  .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; padding-bottom: 9px; }
+  .check input { width: 16px; height: 16px; box-shadow: none; accent-color: #0f1115; }
+  .btw { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-3); width: 220px; }
   .veld { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 13px; font-weight: 500; color: var(--text-3); max-width: 260px; }
   .veld small { font-weight: 400; }
   .reklab, .rek { display: grid; grid-template-columns: 1.1fr 1.6fr 1fr 1fr 32px; gap: 8px; }
