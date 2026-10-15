@@ -51,15 +51,41 @@ export async function winstVoorJaar(cfg: BillitCfg, jaar: number, intern?: Inter
   return winstUitOrders(orders, intern);
 }
 
-// Btw-nummer van het bedrijf zelf (de party van deze sleutel/PartyID).
-export async function eigenBtw(cfg: BillitCfg): Promise<string> {
-  if (!cfg.partyId) return "";
-  try {
-    const p = await get(cfg, `/v1/parties/${cfg.partyId}`);
-    return String(veld(p, "VATNumber", "VatNumber", "VAT") ?? "");
-  } catch {
-    return "";
+export type Bedrijf = { naam: string; btw: string };
+
+const bedrijfUit = (o: any): Bedrijf => ({
+  naam: String(veld(o, "CommercialName", "CompanyName", "DisplayName", "Name") ?? "").trim(),
+  btw: String(veld(o, "VATNumber", "VatNumber", "VAT") ?? "").trim(),
+});
+
+// Zoekt in een willekeurig Billit-antwoord het object met deze PartyID.
+function zoekParty(o: any, partyId: string): any {
+  if (!o || typeof o !== "object") return null;
+  if (!Array.isArray(o) && String(veld(o, "PartyID", "PartyId", "ID") ?? "") === partyId) return o;
+  for (const v of Object.values(o)) {
+    const r = zoekParty(v, partyId);
+    if (r) return r;
   }
+  return null;
+}
+
+// Naam en btw-nummer van het bedrijf zelf (de PartyID van deze BV), uit Billit.
+export async function eigenBedrijf(cfg: BillitCfg): Promise<Bedrijf> {
+  const leeg = { naam: "", btw: "" };
+  if (!cfg.partyId) return leeg;
+  let b = leeg;
+  try {
+    // accountInformation somt de bedrijven van de gebruiker op
+    const info = await get({ ...cfg, partyId: undefined }, "/v1/account/accountInformation");
+    const p = zoekParty(info, cfg.partyId);
+    if (p) b = bedrijfUit(p);
+  } catch {}
+  if (b.naam && b.btw) return b;
+  try {
+    const p = bedrijfUit(await get(cfg, `/v1/parties/${cfg.partyId}`));
+    b = { naam: b.naam || p.naam, btw: b.btw || p.btw };
+  } catch {}
+  return b;
 }
 
 // Banktransacties na een datum (YYYY-MM-DD).

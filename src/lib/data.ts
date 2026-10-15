@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier } from "./reken";
-import { cfgVoor, winstVoorJaar, transactiesVanaf, eigenBtw } from "./billit";
+import { cfgVoor, winstVoorJaar, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
 
 // Rekening: saldo is het saldo op `datum`; Billit-transacties op dat IBAN na die datum worden erbij geteld.
 export type Rekening = { naam: string; iban: string; saldo: number; datum: string };
@@ -65,13 +65,13 @@ export function uitForm(form: FormData): Data {
   return { bvs, bijgewerkt: new Date().toISOString() };
 }
 
-async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>): Promise<T> {
+async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>, ttl = CACHE_TTL): Promise<T> {
   if (!vernieuw) {
     const c = await env.ICOUNT.get<T>(key, "json");
     if (c !== null) return c;
   }
   const v = await maak();
-  await env.ICOUNT.put(key, JSON.stringify(v), { expirationTtl: CACHE_TTL });
+  await env.ICOUNT.put(key, JSON.stringify(v), { expirationTtl: ttl });
   return v;
 }
 
@@ -90,21 +90,40 @@ export type BvRegel = {
   rekeningen: RekeningRegel[];
 };
 
-// Btw-nummers en namen van de BV's die buiten de winst blijven.
-async function interneLeveranciers(data: Data, vernieuw: boolean): Promise<InterneLeverancier> {
-  const uit = data.bvs.map((bv, i) => ({ bv, n: i + 1 })).filter((x) => !x.bv.inWinst);
-  const btw = await Promise.all(
-    uit.map(async ({ bv, n }) => {
-      if (bv.btw) return bv.btw;
+// Een naam als "BV 3" (of leeg) is de standaardnaam: dan nemen we de naam uit Billit.
+export const standaardNaam = (naam: string) => naam.trim() === "" || /^BV \d+$/i.test(naam.trim());
+
+// Naam en btw-nummer per BV uit Billit (1 dag bewaard).
+export async function bedrijvenUitBillit(vernieuw = false): Promise<Bedrijf[]> {
+  return Promise.all(
+    [1, 2, 3, 4].map(async (n) => {
       const cfg = cfgVoor(n);
-      return cfg ? gecached(`cache:btw:${n}`, vernieuw, () => eigenBtw(cfg)) : "";
+      return cfg ? gecached(`cache:bedrijf:${n}`, vernieuw, () => eigenBedrijf(cfg), 86400) : { naam: "", btw: "" };
     }),
   );
-  return { btw: btw.filter(Boolean), namen: uit.map((x) => x.bv.naam) };
 }
 
-export async function overzicht(data: Data, jaar: number, vernieuw: boolean): Promise<BvRegel[]> {
-  const intern = await interneLeveranciers(data, vernieuw);
+// Vult de namen en btw-nummers aan met wat Billit weet, zonder wat je zelf invulde te overschrijven.
+export function metBillit(data: Data, bedrijven: Bedrijf[]): Data {
+  return {
+    ...data,
+    bvs: data.bvs.map((bv, i) => ({
+      ...bv,
+      naam: standaardNaam(bv.naam) && bedrijven[i]?.naam ? bedrijven[i].naam : bv.naam,
+      btw: bv.btw || bedrijven[i]?.btw || "",
+    })),
+  };
+}
+
+// Btw-nummers en namen van de BV's die buiten de winst blijven.
+function interneLeveranciers(data: Data): InterneLeverancier {
+  const uit = data.bvs.filter((bv) => !bv.inWinst);
+  return { btw: uit.map((bv) => bv.btw).filter(Boolean), namen: uit.map((bv) => bv.naam).filter((n) => !standaardNaam(n)) };
+}
+
+export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolean): Promise<BvRegel[]> {
+  const data = metBillit(opgeslagen, await bedrijvenUitBillit(vernieuw));
+  const intern = interneLeveranciers(data);
   const sleutel = encodeURIComponent([...intern.btw, ...intern.namen].join("|"));
   return Promise.all(
     data.bvs.map(async (bv, i): Promise<BvRegel> => {
