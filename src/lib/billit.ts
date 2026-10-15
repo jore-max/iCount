@@ -109,6 +109,14 @@ export async function transactiesVanaf(cfg: BillitCfg, vanaf: string): Promise<T
   return normTransacties(await alle(cfg, "/v1/financialTransactions" + q(`ValueDate gt datetime'${vanaf}'`)));
 }
 
+// Controle of de banktransacties uit Billit herkend worden: de laatste 14 dagen, ruw en genormaliseerd.
+export async function transactieCheck(cfg: BillitCfg): Promise<Record<string, unknown>> {
+  const vanaf = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const ruw = await alle(cfg, "/v1/financialTransactions" + q(`ValueDate gt datetime'${vanaf}'`), 5);
+  const tx = normTransacties(ruw);
+  return { vanaf, ruw: ruw.length, herkend: tx.length, ibans: [...new Set(tx.map((t) => t.iban))], velden: ruw[0] ? Object.keys(ruw[0]) : [], voorbeeld: ruw[0] ?? null, eersteTx: tx.slice(0, 3) };
+}
+
 // Ruwe voorbeelden, om veldnamen na te kijken (pagina /billit-test).
 export async function voorbeeld(cfg: BillitCfg, paden = ["/v1/orders?$top=2", "/v1/financialTransactions?$top=2"]) {
   const uit: Record<string, unknown> = {};
