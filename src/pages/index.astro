@@ -12,176 +12,270 @@ const rijen = await overzicht(data, jaar, vernieuw);
 const totaalWinst = rijen.reduce((s, r) => s + r.winst, 0);
 const totaalSaldo = rijen.reduce((s, r) => s + r.saldo, 0);
 const totaalOmzet = rijen.reduce((s, r) => s + (r.omzet ?? 0), 0);
-const aantalRek = rijen.reduce((s, r) => s + r.rekeningen.length, 0);
+const totaalKosten = rijen.reduce((s, r) => s + (r.kosten ?? 0), 0);
+const rekeningen = rijen.flatMap((r, i) => r.rekeningen.map((k) => ({ ...k, bv: r.naam, i })));
 const jaren = [ditJaar - 2, ditJaar - 1, ditJaar];
-const nu = new Date().toLocaleString("nl-BE", { timeZone: "Europe/Brussels", dateStyle: "medium", timeStyle: "short" });
-
-// Aandeel per BV in een gestapelde balk (negatieve waarden tellen niet mee in de breedte).
-const aandeel = (waarde: (r: (typeof rijen)[number]) => number) => {
-  const som = rijen.reduce((s, r) => s + Math.max(0, waarde(r)), 0);
-  return rijen.map((r, i) => ({ naam: r.naam, i, w: som ? (Math.max(0, waarde(r)) / som) * 100 : 0, v: waarde(r) }));
+const pct = (n: number) => `${n.toFixed(1).replace(".", ",")}%`;
+const marge = (w: number, o: number | null) => (o ? (w / o) * 100 : null);
+const iban = (s: string) => s.replace(/(.{4})/g, "$1 ").trim();
+const kort = (n: number) => {
+  const a = Math.abs(n);
+  const s = a >= 1e6 ? `${(a / 1e6).toFixed(1).replace(".", ",").replace(",0", "")} mln` : a >= 1e3 ? `${Math.round(a / 1e3)}k` : `${Math.round(a)}`;
+  return `${n < 0 ? "−" : ""}€ ${s}`;
 };
-const balken = [
-  { label: "Winst", totaal: totaalWinst, delen: aandeel((r) => r.winst) },
-  { label: "Liquide middelen", totaal: totaalSaldo, delen: aandeel((r) => r.saldo) },
-];
-const marge = (r: (typeof rijen)[number]) => (r.omzet ? (r.winst / r.omzet) * 100 : null);
+
+// ---- Grafiek: winst per maand, gestapeld per BV ----
+const MAANDEN = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+const reeksen = rijen.map((r, i) => ({ naam: r.naam, i, m: r.maanden })).filter((r) => r.m);
+const W = 960, H = 300, L = 64, R = 8, T = 12, B = 30;
+const pw = W - L - R, ph = H - T - B;
+const perMaand = MAANDEN.map((_, m) => reeksen.map((r) => ({ i: r.i, naam: r.naam, v: r.m![m].omzet - r.m![m].kosten })));
+const hoog = Math.max(0, ...perMaand.map((d) => d.reduce((s, x) => s + Math.max(0, x.v), 0)));
+const laag = Math.min(0, ...perMaand.map((d) => d.reduce((s, x) => s + Math.min(0, x.v), 0)));
+const ruw = (hoog - laag) / 4 || 1;
+const mag = 10 ** Math.floor(Math.log10(ruw));
+const stap = [1, 2, 2.5, 5, 10].map((f) => f * mag).find((s) => s >= ruw)!;
+const yMax = Math.ceil(hoog / stap) * stap || stap, yMin = Math.floor(laag / stap) * stap;
+const y = (v: number) => T + ((yMax - v) / (yMax - yMin)) * ph;
+const ticks: number[] = [];
+for (let v = yMin; v <= yMax + 1e-6; v += stap) ticks.push(v);
+const band = pw / 12, bw = Math.min(36, band * 0.56);
+const balken = perMaand.map((d, m) => {
+  const x = L + band * m + (band - bw) / 2;
+  let op = 0, neer = 0;
+  const seg = d.filter((s) => s.v !== 0).map((s) => {
+    const van = s.v > 0 ? op : neer;
+    const tot = van + s.v;
+    if (s.v > 0) op = tot; else neer = tot;
+    const y1 = y(Math.max(van, tot)), y2 = y(Math.min(van, tot));
+    return { i: s.i, x, y: y1 + 1, h: Math.max(0, y2 - y1 - 2) };
+  });
+  return { m, x, seg, totaal: d.reduce((s, x) => s + x.v, 0), d };
+});
+const tipData = balken.map((b) => ({ maand: `${MAANDEN[b.m]} ${jaar}`, totaal: euro(b.totaal), rijen: b.d.map((s) => ({ naam: s.naam, i: s.i, v: euro(s.v) })) }));
+
+const maxSaldo = Math.max(1, ...rijen.map((r) => Math.abs(r.saldo)));
 ---
 <Layout titel="Overzicht" actief="overzicht">
   <div class="head">
     <div>
-      <h1>Overzicht {jaar}</h1>
-      <p class="muted">Vier BV's samen · winst excl. btw uit Billit · {nu}</p>
+      <h1>Overzicht</h1>
+      <p class="t2">Geconsolideerd over {rijen.length} BV's · winst exclusief btw uit Billit</p>
     </div>
     <div class="acties">
-      <div class="seg" role="tablist">
-        {jaren.map((j) => <a href={`/?jaar=${j}`} aria-selected={j === jaar ? "true" : "false"}>{j}</a>)}
+      <div class="seg">
+        {jaren.map((j) => <a href={`/?jaar=${j}`} aria-current={j === jaar ? "true" : undefined}>{j}</a>)}
       </div>
-      <a class="btn" href={`/?jaar=${jaar}&vernieuw=1`} title="Haal de cijfers opnieuw op uit Billit">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      <a class="btn" href={`/?jaar=${jaar}&vernieuw=1`}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         Vernieuwen
       </a>
     </div>
   </div>
 
-  {rijen.filter((r) => r.fout).map((r) => <div class="alert err"><b>{r.naam}:</b> Billit gaf een fout. {r.fout}</div>)}
+  {rijen.filter((r) => r.fout).map((r) => <div class="alert err"><b>{r.naam}</b>: Billit gaf een fout. {r.fout}</div>)}
 
-  <section class="kpis">
-    <div class="card kpi hero">
+  <section class="panel kpis">
+    <div class="kpi">
       <span class="lbl">Winst + liquide middelen</span>
-      <b class="num">{euro(totaalWinst + totaalSaldo)}</b>
-      <span class="sub">over {rijen.length} BV's en {aantalRek} rekeningen</span>
+      <b class="num groot">{euro(totaalWinst + totaalSaldo)}</b>
+      <span class="t3">stand {new Date().toLocaleDateString("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long" })}</span>
     </div>
-    <div class="card kpi">
+    <div class="kpi">
       <span class="lbl">Winst {jaar}</span>
       <b class:list={["num", { neg: totaalWinst < 0 }]}>{euro(totaalWinst)}</b>
-      <span class="sub muted">{totaalOmzet ? `marge ${((totaalWinst / totaalOmzet) * 100).toFixed(1).replace(".", ",")}% op ${euro(totaalOmzet)} omzet` : "geen omzet"}</span>
+      <span class="t3">{totaalOmzet ? <>marge <span class="t2">{pct((totaalWinst / totaalOmzet) * 100)}</span> op {kort(totaalOmzet)} omzet</> : "nog geen omzet"}</span>
     </div>
-    <div class="card kpi">
+    <div class="kpi">
       <span class="lbl">Liquide middelen</span>
       <b class:list={["num", { neg: totaalSaldo < 0 }]}>{euro(totaalSaldo)}</b>
-      <span class="sub muted">som van alle rekeningsaldi</span>
+      <span class="t3">{rekeningen.length} rekeningen</span>
     </div>
   </section>
 
-  <section class="card verdeling">
-    <h2>Verdeling per BV</h2>
-    {balken.map((b) => (
-      <div class="balk">
-        <div class="balkkop"><span>{b.label}</span><span class="num muted">{euro(b.totaal)}</span></div>
-        <div class="stack">
-          {b.delen.filter((d) => d.w > 0).map((d) => (
-            <span style={`width:${d.w}%;background:var(--bv${d.i + 1})`} title={`${d.naam}: ${euro(d.v)}`}></span>
-          ))}
-        </div>
+  <section class="panel kaart">
+    <div class="kaartkop">
+      <div>
+        <h2>Winst per maand</h2>
+        <p class="t3">Omzet min kosten per maand, gestapeld per BV</p>
       </div>
-    ))}
-    <div class="legenda">
-      {rijen.map((r, i) => <span><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span>)}
+      <div class="legende">
+        {reeksen.map((r) => <span><i style={`background:var(--bv${r.i + 1})`}></i>{r.naam}</span>)}
+      </div>
     </div>
+    {reeksen.length === 0
+      ? <p class="leeg t3">Nog geen Billit-gegevens. Stel BILLIT_KEY en de PartyID's in.</p>
+      : <div class="grafiek">
+          <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Winst per maand in ${jaar}, gestapeld per BV`}>
+            {ticks.map((t) => (
+              <g>
+                <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} class:list={["grid", { nul: t === 0 }]} />
+                <text x={L - 10} y={y(t) + 4} text-anchor="end" class="as">{kort(t)}</text>
+              </g>
+            ))}
+            {balken.map((b) => (
+              <g>
+                {b.seg.map((s) => <rect x={s.x} y={s.y} width={bw} height={s.h} rx="3" style={`fill:var(--bv${s.i + 1})`} />)}
+                <text x={b.x + bw / 2} y={H - 8} text-anchor="middle" class="as">{MAANDEN[b.m]}</text>
+                <rect class="hit" data-m={b.m} x={L + band * b.m} y={T} width={band} height={ph} />
+              </g>
+            ))}
+          </svg>
+          <div class="tip" hidden></div>
+          <script type="application/json" id="tipdata" set:html={JSON.stringify(tipData)} />
+        </div>}
   </section>
 
-  <section class="bvs">
-    {rijen.map((r, i) => (
-      <article class="card bv" style={`--c:var(--bv${i + 1})`}>
-        <header>
-          <span class="dot"></span>
-          <h3>{r.naam}</h3>
-          {r.billit ? <span class="badge live">Billit</span> : <span class="badge">Handmatig</span>}
-        </header>
-
-        <div class="cijfers">
-          <div>
-            <span class="lbl">Winst</span>
-            <b class:list={["num", { neg: r.winst < 0 }]}>{euro(r.winst)}</b>
-          </div>
-          <div>
-            <span class="lbl">Saldo</span>
-            <b class:list={["num", { neg: r.saldo < 0 }]}>{euro(r.saldo)}</b>
-          </div>
-        </div>
-
-        {r.omzet !== null && (
-          <div class="ok-row">
-            <div class="mini"><span class="muted">Omzet</span><span class="num">{euro(r.omzet)}</span></div>
-            <div class="mini"><span class="muted">Kosten</span><span class="num">{euro(r.kosten ?? 0)}</span></div>
-            <div class="mini"><span class="muted">Marge</span><span class:list={["num", { neg: (marge(r) ?? 0) < 0, pos: (marge(r) ?? 0) > 0 }]}>{marge(r) === null ? "–" : `${marge(r)!.toFixed(1).replace(".", ",")}%`}</span></div>
-          </div>
-        )}
-
-        <ul class="reks">
-          {r.rekeningen.length === 0 && <li class="muted">Nog geen rekeningen. <a href="/instellingen">Toevoegen</a></li>}
-          {r.rekeningen.map((k) => (
-            <li>
-              <div>
-                <span class="rn">{k.naam || "Rekening"}</span>
-                <span class="ri muted">{k.iban ? k.iban.replace(/(.{4})/g, "$1 ").trim() : "geen IBAN"}{k.mutatie !== null && k.mutatie !== 0 && <> · <span class:list={{ pos: k.mutatie > 0, neg: k.mutatie < 0 }}>{k.mutatie > 0 ? "+" : ""}{euro(k.mutatie)}</span> sinds {new Date(k.datum).toLocaleDateString("nl-BE", { day: "numeric", month: "short" })}</>}</span>
-              </div>
-              <span class:list={["num", { neg: k.huidig < 0 }]}>{euro(k.huidig)}</span>
-            </li>
+  <div class="twee">
+    <section class="panel tabel">
+      <div class="kaartkop pad"><h2>Per BV</h2></div>
+      <table>
+        <thead><tr><th>BV</th><th class="r verberg">Omzet</th><th class="r verberg">Kosten</th><th class="r">Winst</th><th class="r">Marge</th></tr></thead>
+        <tbody>
+          {rijen.map((r, i) => (
+            <tr>
+              <td><span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span>{!r.billit && <span class="chip">handmatig</span>}</td>
+              <td class="r num t2 verberg">{r.omzet === null ? "–" : euro(r.omzet)}</td>
+              <td class="r num t2 verberg">{r.kosten === null ? "–" : euro(r.kosten)}</td>
+              <td class:list={["r num sterk", { neg: r.winst < 0 }]}>{euro(r.winst)}</td>
+              <td class="r num t2">{marge(r.winst, r.omzet) === null ? "–" : pct(marge(r.winst, r.omzet)!)}</td>
+            </tr>
           ))}
-        </ul>
-      </article>
-    ))}
+        </tbody>
+        <tfoot><tr><td>Totaal</td><td class="r num verberg">{euro(totaalOmzet)}</td><td class="r num verberg">{euro(totaalKosten)}</td><td class:list={["r num", { neg: totaalWinst < 0 }]}>{euro(totaalWinst)}</td><td class="r num">{totaalOmzet ? pct((totaalWinst / totaalOmzet) * 100) : "–"}</td></tr></tfoot>
+      </table>
+    </section>
+
+    <section class="panel liq">
+      <div class="kaartkop"><h2>Liquide middelen per BV</h2></div>
+      <ul>
+        {rijen.map((r, i) => (
+          <li>
+            <div class="liqkop"><span class="bvn"><i style={`background:var(--bv${i + 1})`}></i>{r.naam}</span><span class:list={["num sterk", { neg: r.saldo < 0 }]}>{euro(r.saldo)}</span></div>
+            <div class="spoor"><span style={`width:${(Math.abs(r.saldo) / maxSaldo) * 100}%;background:var(--bv${i + 1})`}></span></div>
+            <span class="t3">{totaalSaldo > 0 && r.saldo > 0 ? `${pct((r.saldo / totaalSaldo) * 100)} van totaal · ` : ""}{r.rekeningen.length} {r.rekeningen.length === 1 ? "rekening" : "rekeningen"}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  </div>
+
+  <section class="panel tabel">
+    <div class="kaartkop pad">
+      <h2>Rekeningen</h2>
+      <a class="btn" href="/instellingen">Beheren</a>
+    </div>
+    <table>
+      <thead><tr><th>Rekening</th><th class="verberg">IBAN</th><th class="verberg">BV</th><th class="r verberg">Sinds laatste saldo</th><th class="r">Saldo</th></tr></thead>
+      <tbody>
+        {rekeningen.length === 0 && <tr><td colspan="5" class="t3">Nog geen rekeningen. <a href="/instellingen">Voeg er een toe</a>.</td></tr>}
+        {rekeningen.map((k) => (
+          <tr>
+            <td><span class="sterk">{k.naam || "Rekening"}</span><span class="mob t3"><i style={`background:var(--bv${k.i + 1})`}></i>{k.bv}</span></td>
+            <td class="num t2 verberg">{k.iban ? iban(k.iban) : "–"}</td>
+            <td class="verberg"><span class="bvn"><i style={`background:var(--bv${k.i + 1})`}></i>{k.bv}</span></td>
+            <td class="r num verberg">{k.mutatie === null ? <span class="t3">–</span> : <span class:list={{ pos: k.mutatie > 0, neg: k.mutatie < 0, t3: k.mutatie === 0 }}>{k.mutatie > 0 ? "+" : ""}{euro(k.mutatie)}</span>}<span class="t3"> · {new Date(k.datum).toLocaleDateString("nl-BE", { day: "numeric", month: "short" })}</span></td>
+            <td class:list={["r num sterk", { neg: k.huidig < 0 }]}>{euro(k.huidig)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   </section>
 </Layout>
 
+<script>
+  const data = JSON.parse(document.getElementById("tipdata")?.textContent ?? "[]");
+  const box = document.querySelector<HTMLElement>(".grafiek");
+  const tip = document.querySelector<HTMLElement>(".tip");
+  box?.querySelectorAll<SVGRectElement>(".hit").forEach((el) => {
+    el.addEventListener("mouseenter", () => {
+      const d = data[Number(el.dataset.m)];
+      if (!d || !tip || !box) return;
+      tip.innerHTML = `<b>${d.maand}</b>` + d.rijen.map((r: any) => `<div><span><i style="background:var(--bv${r.i + 1})"></i>${r.naam}</span><span>${r.v}</span></div>`).join("") + `<div class="tt"><span>Totaal</span><span>${d.totaal}</span></div>`;
+      tip.hidden = false;
+      const br = box.getBoundingClientRect(), er = el.getBoundingClientRect();
+      // naast de balk, rechts als er plaats is, anders links
+      const rechts = er.right - br.left + 8;
+      tip.style.left = `${rechts + 220 <= br.width ? rechts : er.left - br.left - 8 - tip.offsetWidth}px`;
+      box.querySelectorAll(".hit").forEach((h) => h.classList.toggle("aan", h === el));
+    });
+  });
+  box?.addEventListener("mouseleave", () => { if (tip) tip.hidden = true; box.querySelectorAll(".hit").forEach((h) => h.classList.remove("aan")); });
+</script>
+
 <style>
-  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
-  .head p { margin: 4px 0 0; font-size: 14px; }
-  .acties { display: flex; gap: 8px; align-items: center; }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; }
+  .head p { margin: 4px 0 0; }
+  .acties { display: flex; gap: 8px; }
   .seg { display: inline-flex; padding: 3px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; }
-  .seg a { text-decoration: none; padding: 5px 12px; border-radius: 7px; font-size: 14px; font-weight: 500; color: var(--muted); }
-  .seg a[aria-selected="true"] { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+  .seg a { text-decoration: none; padding: 4px 11px; border-radius: 7px; font-weight: 500; color: var(--text-2); }
+  .seg a[aria-current] { background: #fff; color: var(--text); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(16,24,40,.06); }
 
-  .kpis { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; }
-  .kpi { padding: 22px 24px; display: flex; flex-direction: column; gap: 4px; }
-  .kpi .lbl, .bv .lbl { font-size: 13px; font-weight: 500; color: var(--muted); }
-  .kpi b { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
-  .kpi .sub { font-size: 13px; }
-  .kpi.hero { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #0ea5e9)); border: 0; color: #fff; }
-  .kpi.hero .lbl, .kpi.hero .sub { color: rgba(255,255,255,.8); }
-  .kpi.hero b { font-size: 36px; }
+  .kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr; }
+  .kpi { padding: 22px 24px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .kpi + .kpi { border-left: 1px solid var(--line); }
+  .lbl { font-size: 13px; font-weight: 500; color: var(--text-2); }
+  .kpi b { font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
+  .kpi b.groot { font-size: 34px; }
+  .kpi > span:last-child { font-size: 13px; }
 
-  .verdeling { margin-top: 16px; padding: 20px 24px; }
-  h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
-  .balk + .balk { margin-top: 14px; }
-  .balkkop { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; font-weight: 500; }
-  .stack { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--soft); gap: 2px; }
-  .stack span { display: block; height: 100%; }
-  .legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 16px; font-size: 13px; color: var(--muted); }
-  .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  section.panel { margin-top: 16px; }
+  .kaart { padding: 22px 24px 18px; }
+  .kaartkop { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .kaartkop.pad { padding: 18px 20px 12px; align-items: center; }
+  h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .kaartkop p { margin: 2px 0 0; font-size: 13px; }
+  .legende { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--text-2); }
+  .mob { display: none; font-size: 12px; margin-top: 2px; }
+  .legende i, .bvn i, .tip i, .mob i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: 1px; }
+  .leeg { padding: 40px 0; text-align: center; }
 
-  .bvs { margin-top: 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  .bv { padding: 20px 24px; border-top: 3px solid var(--c); min-width: 0; }
-  .bv header { display: flex; align-items: center; gap: 10px; }
-  .bv h3 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
-  .cijfers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-  .cijfers b { display: block; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
-  .ok-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; padding: 12px 14px; background: var(--soft); border-radius: 12px; }
-  .mini { display: flex; flex-direction: column; font-size: 13px; }
-  .mini .num { font-weight: 600; font-size: 14px; }
-  .reks { list-style: none; margin: 14px 0 0; padding: 0; }
-  .reks li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
-  .reks li > div { display: flex; flex-direction: column; min-width: 0; }
-  .rn { font-weight: 500; }
-  .ri { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reks li > .num { font-weight: 600; white-space: nowrap; }
+  .grafiek { position: relative; margin-top: 16px; }
+  .grafiek svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .grid.nul { stroke: var(--line-2); }
+  .as { font-size: 12px; fill: var(--text-3); font-variant-numeric: tabular-nums; }
+  .hit { fill: transparent; cursor: default; }
+  .hit.aan { fill: rgba(15,17,21,.04); }
+  .tip { position: absolute; top: 0; min-width: 210px; padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,.12); font-size: 12px; pointer-events: none; }
+  .tip :global(b) { display: block; margin-bottom: 6px; font-size: 12px; }
+  .tip :global(div) { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; font-variant-numeric: tabular-nums; color: var(--text-2); }
+  .tip :global(.tt) { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text); font-weight: 600; }
 
-  @media (max-width: 860px) {
-    .kpis { grid-template-columns: 1fr 1fr; }
-    .kpi.hero { grid-column: 1 / -1; }
-    .bvs { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 520px) {
+  .twee { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+  .twee > section { margin-top: 16px; min-width: 0; }
+  .tabel { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-3); padding: 8px 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fbfbfc; }
+  td { padding: 12px 20px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:hover td { background: #fafbfc; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tfoot td { border-top: 1px solid var(--line); border-bottom: 0; font-weight: 600; }
+  .r { text-align: right; }
+  .sterk { font-weight: 600; }
+  .bvn { font-weight: 500; }
+  td .chip { margin-left: 8px; }
+
+  .liq { padding: 18px 20px; }
+  .liq ul { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+  .liqkop { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+  .spoor { height: 6px; background: var(--soft); border-radius: 999px; overflow: hidden; }
+  .spoor span { display: block; height: 100%; border-radius: 999px; }
+  .liq li > .t3 { display: block; margin-top: 5px; font-size: 12px; }
+
+  @media (max-width: 1100px) { .twee { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
     .kpis { grid-template-columns: 1fr; }
-    h1 { font-size: 24px; }
-    .kpi b { font-size: 26px; }
-    .kpi.hero b { font-size: 30px; }
-    .bv, .verdeling, .kpi { padding: 18px; }
-    .cijfers b { font-size: 20px; }
-    .ok-row { padding: 10px; }
+    .kpi + .kpi { border-left: 0; border-top: 1px solid var(--line); }
+    .kpi b.groot { font-size: 30px; }
+    .verberg { display: none; }
+    .mob { display: block; }
+    .grafiek { overflow-x: auto; margin: 16px -16px 0; padding: 0 16px; }
+    .grafiek svg { min-width: 640px; }
+    .legende { font-size: 12px; }
+    th, td { padding-left: 14px; padding-right: 14px; }
+    td:first-child { white-space: normal; }
+    .kaart { padding: 18px 16px 14px; }
   }
 </style>

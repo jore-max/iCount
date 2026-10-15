@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { bedrag, normIban, mutatieNa, type Tx } from "./reken";
+import { bedrag, normIban, mutatieNa, type Tx, type Maand } from "./reken";
 import { cfgVoor, winstVoorJaar, transactiesVanaf } from "./billit";
 
 // Rekening: saldo is het saldo op `datum`; Billit-transacties op dat IBAN na die datum worden erbij geteld.
@@ -75,6 +75,7 @@ export type BvRegel = {
   omzet: number | null;
   kosten: number | null;
   winst: number;
+  maanden: Maand[] | null;
   saldo: number;
   rekeningen: RekeningRegel[];
 };
@@ -85,12 +86,13 @@ export async function overzicht(data: Data, jaar: number, vernieuw: boolean): Pr
       const cfg = cfgVoor(i + 1);
       let fout: string | null = null;
       let omzet: number | null = null, kosten: number | null = null, winst = bv.winstHandmatig;
+      let maanden: Maand[] | null = null;
       let tx: Tx[] = [];
 
       if (cfg) {
         try {
-          const w = await gecached(`cache:winst:${i + 1}:${jaar}`, vernieuw, () => winstVoorJaar(cfg, jaar));
-          ({ omzet, kosten, winst } = w);
+          const w = await gecached(`cache:winst2:${i + 1}:${jaar}`, vernieuw, () => winstVoorJaar(cfg, jaar));
+          ({ omzet, kosten, winst, maanden } = w);
           const metIban = bv.rekeningen.filter((r) => r.iban);
           if (metIban.length) {
             const vanaf = metIban.map((r) => r.datum).sort()[0];
@@ -112,6 +114,7 @@ export async function overzicht(data: Data, jaar: number, vernieuw: boolean): Pr
         omzet,
         kosten,
         winst,
+        maanden,
         saldo: rekeningen.reduce((s, r) => s + r.huidig, 0),
         rekeningen,
       };

@@ -14,23 +14,28 @@ export function veld(o: Obj, ...namen: string[]): any {
 
 const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-export type Winst = { omzet: number; kosten: number; winst: number; facturen: number };
+export type Maand = { omzet: number; kosten: number };
+export type Winst = { omzet: number; kosten: number; winst: number; facturen: number; maanden: Maand[] };
 
-// Winst = verkoopfacturen - verkoopcreditnota's - aankoopfacturen + aankoopcreditnota's (excl. btw).
+// Winst = verkoopfacturen - verkoopcreditnota's - aankoopfacturen + aankoopcreditnota's (excl. btw),
+// ook per maand (index 0 = januari) op basis van OrderDate.
 export function winstUitOrders(orders: Obj[]): Winst {
   let omzet = 0, kosten = 0, facturen = 0;
+  const maanden: Maand[] = Array.from({ length: 12 }, () => ({ omzet: 0, kosten: 0 }));
   for (const o of orders) {
     const type = String(veld(o, "OrderType") ?? "").toLowerCase();
     const credit = type.includes("credit");
     if (!credit && type !== "invoice") continue; // offertes, bestelbonnen, ... tellen niet
     const richting = String(veld(o, "OrderDirection") ?? "").toLowerCase();
     const bedrag = Math.abs(num(veld(o, "TotalExcl"))) * (credit ? -1 : 1);
-    if (richting === "income") omzet += bedrag;
-    else if (richting === "cost") kosten += bedrag;
+    const m = new Date(String(veld(o, "OrderDate") ?? "")).getMonth();
+    const maand = Number.isNaN(m) ? null : maanden[m];
+    if (richting === "income") { omzet += bedrag; if (maand) maand.omzet += bedrag; }
+    else if (richting === "cost") { kosten += bedrag; if (maand) maand.kosten += bedrag; }
     else continue;
     facturen++;
   }
-  return { omzet, kosten, winst: omzet - kosten, facturen };
+  return { omzet, kosten, winst: omzet - kosten, facturen, maanden };
 }
 
 const normIban = (s: any) => String(s ?? "").replace(/\s/g, "").toUpperCase();

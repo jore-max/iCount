@@ -14,21 +14,21 @@ const bijgewerkt = data.bijgewerkt
   ? new Date(data.bijgewerkt).toLocaleString("nl-BE", { timeZone: "Europe/Brussels", dateStyle: "medium", timeStyle: "short" })
   : "nog nooit";
 ---
-<Layout titel="Instellingen" actief="instellingen">
+<Layout titel="Rekeningen" actief="instellingen">
   <div class="head">
-    <h1>Instellingen</h1>
-    <p class="muted">Namen en rekeningen per BV · laatst opgeslagen {bijgewerkt}</p>
+    <h1>Rekeningen</h1>
+    <p class="t2">Namen, rekeningen en saldi per BV · laatst opgeslagen {bijgewerkt}</p>
   </div>
   {opgeslagen && <div class="alert ok">Opgeslagen.</div>}
 
   <form method="post">
     <div class="grid">
       {data.bvs.map((bv, i) => (
-        <fieldset class="card" style={`--c:var(--bv${i + 1})`}>
+        <fieldset class="panel" style={`--c:var(--bv${i + 1})`}>
           <div class="kop">
             <span class="dot"></span>
             <input class="naam" name={`bv${i}_naam`} value={bv.naam} aria-label="Naam van de BV" />
-            {billit[i] ? <span class="badge live">Billit</span> : <span class="badge">Handmatig</span>}
+            {billit[i] ? <span class="chip live">Billit</span> : <span class="chip">Handmatig</span>}
           </div>
 
           {billit[i]
@@ -52,7 +52,7 @@ const bijgewerkt = data.bijgewerkt
       ))}
     </div>
     <div class="bar">
-      <p class="muted">Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
+      <p class="t3">Vul per rekening het saldo op een datum in, bijvoorbeeld van je laatste uittreksel. Met een IBAN telt iCount de Billit-banktransacties na die datum erbij.</p>
       <button class="btn primary" type="submit">Opslaan</button>
     </div>
   </form>
@@ -76,25 +76,25 @@ const bijgewerkt = data.bijgewerkt
 
 <style>
   .head { margin-bottom: 20px; }
-  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; }
   .head p { margin: 4px 0 0; font-size: 14px; }
   .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-  fieldset { margin: 0; min-width: 0; padding: 20px 24px; border-top: 3px solid var(--c); }
+  fieldset { margin: 0; min-width: 0; padding: 18px 22px 20px; }
   .kop { display: flex; align-items: center; gap: 10px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
-  input { width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); min-width: 0; }
-  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
-  input.naam { font-size: 17px; font-weight: 600; border-color: transparent; background: transparent; padding: 4px 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
+  input { width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--text); min-width: 0; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+  input:focus { outline: 3px solid rgba(42,120,214,.18); border-color: #2a78d6; }
+  input.naam { font-size: 16px; font-weight: 600; border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; }
   input.naam:hover { border-color: var(--line); }
-  .veld { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 13px; font-weight: 500; color: var(--muted); max-width: 260px; }
+  .veld { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 13px; font-weight: 500; color: var(--text-3); max-width: 260px; }
   .veld small { font-weight: 400; }
   .reklab, .rek { display: grid; grid-template-columns: 1.1fr 1.6fr 1fr 1fr 32px; gap: 8px; }
-  .reklab { margin-top: 16px; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .reklab { margin-top: 16px; font-size: 12px; font-weight: 500; color: var(--text-3); }
   .rek { margin-top: 8px; align-items: center; }
-  .x { width: 32px; height: 36px; border: 0; background: none; color: var(--muted); font-size: 20px; cursor: pointer; border-radius: 8px; }
+  .x { width: 32px; height: 36px; border: 0; background: none; color: var(--text-3); font-size: 20px; cursor: pointer; border-radius: 8px; }
   .x:hover { background: var(--soft); color: var(--neg); }
-  .add { margin-top: 10px; border: 1px dashed var(--line); background: none; color: var(--accent); font: inherit; font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
-  .bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 14px 0; background: var(--bg); border-top: 1px solid var(--line); }
+  .add { margin-top: 10px; border: 1px dashed var(--line-2); background: none; color: var(--text-2); font: inherit; font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+  .bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 14px 0; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
   .bar p { margin: 0; font-size: 13px; max-width: 640px; }
   @media (max-width: 720px) {
     .reklab { display: none; }
