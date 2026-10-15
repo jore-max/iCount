@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier, type Openstaand } from "./reken";
-import { cfgVoor, winstVoorJaar, openstaandeVerkoop, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
+import { cfgVoor, winstVoorJaar, openstaandeVerkoop, transactieCheck, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
 
 // Rekening: saldo is het saldo op `datum`; Billit-transacties op dat IBAN na die datum worden erbij geteld.
 export type Rekening = { naam: string; iban: string; saldo: number; datum: string };
@@ -155,6 +155,8 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
           if (metIban.length) {
             const vanaf = metIban.map((r) => r.datum).sort()[0];
             tx = await gecached(`cache:tx:${i + 1}:${vanaf}`, vernieuw, () => transactiesVanaf(cfg, vanaf));
+            // tijdelijk: bewaart wat Billit aan transacties teruggeeft, om de veldnamen na te kijken
+            await gecached(`cache:txcheck:${i + 1}`, vernieuw, () => transactieCheck(cfg), 86400).catch(() => null);
           }
         } catch (e) {
           fout = e instanceof Error ? e.message : String(e);
