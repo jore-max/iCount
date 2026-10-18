@@ -1,8 +1,9 @@
 ---
-interface Props { titel: string; actief: "overzicht" | "instellingen" }
+interface Props { titel: string; actief: "overzicht" | "instellingen" | "assistent" }
 const { titel, actief } = Astro.props;
 const nav = [
   { href: "/", id: "overzicht", label: "Overzicht", icon: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" },
+  { href: "/assistent", id: "assistent", label: "Assistent", icon: "M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" },
   { href: "/instellingen", id: "instellingen", label: "Rekeningen", icon: "M3 10h18M5 10V20M19 10V20M9 14v3M15 14v3M12 3l9 5H3l9-5zM3 20h18" },
 ];
 ---

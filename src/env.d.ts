@@ -3,6 +3,7 @@ declare namespace Cloudflare {
   interface Env {
     ICOUNT: KVNamespace;
     WACHTWOORD?: string;
+    AI?: { run: (model: string, invoer: Record<string, unknown>) => Promise<any> };
     BILLIT_BASE?: string;
     BILLIT_KEY?: string;
     BILLIT_KEY_1?: string;

@@ -1,0 +1,285 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { assistentKlaar } from "../lib/assistent";
+
+const klaar = assistentKlaar();
+const voorbeelden = [
+  "Welke verkoopfacturen staan nog open en welke zijn vervallen?",
+  "Wat waren onze 5 grootste kosten dit jaar?",
+  "Hoeveel hebben we dit jaar gefactureerd per klant?",
+  "Vergelijk de winst per BV met vorig jaar.",
+];
+---
+<Layout titel="Assistent" actief="assistent">
+  <div class="chat">
+    <div class="head">
+      <div>
+        <h1>Assistent</h1>
+        <p class="t2">Stel een vraag over Billit. De assistent zoekt het live op in de facturen en banktransacties van de 4 BV's.</p>
+      </div>
+      <button class="btn" id="nieuw" type="button" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Nieuw gesprek
+      </button>
+    </div>
+
+    {!klaar && (
+      <div class="alert err">
+        De assistent is nog niet ingesteld: de AI-binding ontbreekt in <code>wrangler.jsonc</code>.
+      </div>
+    )}
+
+    <div id="lijst" class="lijst">
+      <div id="leeg" class="leeg panel">
+        <div class="ster">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>
+        </div>
+        <b>Waarmee kan ik helpen?</b>
+        <p class="t2">Bijvoorbeeld:</p>
+        <div class="voorbeelden">
+          {voorbeelden.map((v) => <button type="button" class="vb">{v}</button>)}
+        </div>
+      </div>
+    </div>
+
+    <form id="form" class="invoer panel">
+      <textarea id="vraag" rows="1" placeholder="Stel een vraag over Billit…" disabled={!klaar}></textarea>
+      <button class="btn primary" id="stuur" type="submit" disabled={!klaar} aria-label="Versturen">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+    <p class="t3 klein">Enkel lezen in Billit. Controleer belangrijke cijfers in Billit zelf.</p>
+  </div>
+</Layout>
+
+<style>
+  .chat { max-width: 860px; display: flex; flex-direction: column; min-height: calc(100vh - 104px); }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.025em; }
+  .head p { margin: 4px 0 0; font-size: 14px; }
+  .head .btn { flex: none; white-space: nowrap; }
+  code { font-size: 12px; background: rgba(0,0,0,.05); padding: 1px 5px; border-radius: 5px; }
+  .lijst { flex: 1; display: flex; flex-direction: column; gap: 18px; padding-bottom: 20px; }
+  .leeg { padding: 28px; display: flex; flex-direction: column; align-items: flex-start; }
+  .leeg[hidden] { display: none; }
+  .leeg b { font-size: 16px; font-weight: 600; }
+  .leeg p { margin: 2px 0 12px; }
+  .ster { width: 36px; height: 36px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 14px; }
+  .ster svg { width: 18px; height: 18px; }
+  .voorbeelden { display: flex; flex-wrap: wrap; gap: 8px; }
+  .vb { font: inherit; font-size: 13px; text-align: left; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: #fff; color: var(--text); cursor: pointer; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+  .vb:hover { background: var(--soft); }
+
+  .invoer { position: sticky; bottom: 16px; display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 14px; box-shadow: 0 4px 16px rgba(16,24,40,.08); }
+  .invoer:focus-within { border-color: #2a78d6; box-shadow: 0 0 0 3px rgba(42,120,214,.15), 0 4px 16px rgba(16,24,40,.08); }
+  textarea { flex: 1; border: 0; outline: 0; resize: none; font: inherit; font-size: 15px; padding: 7px 0; max-height: 200px; background: transparent; color: var(--text); }
+  textarea::placeholder { color: #b6bac3; }
+  .invoer .btn { padding: 9px 11px; }
+  .invoer .btn:disabled { opacity: .4; cursor: default; }
+  .klein { font-size: 12px; margin: 8px 2px 0; }
+
+  @media (max-width: 900px) { .chat { min-height: calc(100vh - 130px); } }
+</style>
+
+<style is:global>
+  .msg.vraag { align-self: flex-end; max-width: 80%; background: var(--accent); color: #fff; padding: 9px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+  .msg.antwoord { align-self: stretch; line-height: 1.6; }
+  .msg.antwoord > :first-child { margin-top: 0; }
+  .msg.antwoord p, .msg.antwoord ul, .msg.antwoord ol { margin: 0 0 10px; }
+  .msg.antwoord ul, .msg.antwoord ol { padding-left: 22px; }
+  .msg.antwoord h3, .msg.antwoord h4 { margin: 16px 0 6px; font-size: 15px; font-weight: 600; }
+  .msg.antwoord .tabel { overflow-x: auto; margin: 4px 0 12px; border: 1px solid var(--line); border-radius: 12px; }
+  .msg.antwoord table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .msg.antwoord th { text-align: left; font-weight: 500; color: var(--text-2); background: var(--soft); }
+  .msg.antwoord th, .msg.antwoord td { padding: 7px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .msg.antwoord tr:last-child td { border-bottom: 0; }
+  .msg.antwoord td.r, .msg.antwoord th.r { text-align: right; }
+  .msg.antwoord .fout { color: var(--neg); }
+  .stappen { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .stappen:empty { display: none; }
+  .stap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); padding: 3px 9px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
+  .stap.bezig::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-3); border-top-color: transparent; animation: draai .8s linear infinite; }
+  .denkt { display: inline-flex; gap: 4px; padding: 6px 0; }
+  .denkt i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: puls 1.2s infinite ease-in-out; }
+  .denkt i:nth-child(2) { animation-delay: .15s; } .denkt i:nth-child(3) { animation-delay: .3s; }
+  @keyframes draai { to { transform: rotate(360deg); } }
+  @keyframes puls { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+</style>
+
+<script>
+  type Bericht = { role: "user" | "assistant"; content: string };
+  const OPSLAG = "icount-assistent";
+  const lijst = document.getElementById("lijst")!;
+  const leeg = document.getElementById("leeg")!;
+  const form = document.getElementById("form") as HTMLFormElement;
+  const vraag = document.getElementById("vraag") as HTMLTextAreaElement;
+  const stuurKnop = document.getElementById("stuur") as HTMLButtonElement;
+  const nieuw = document.getElementById("nieuw") as HTMLButtonElement;
+
+  let gesprek: Bericht[] = [];
+  try { gesprek = JSON.parse(sessionStorage.getItem(OPSLAG) || "[]"); } catch {}
+  const bewaar = () => { try { sessionStorage.setItem(OPSLAG, JSON.stringify(gesprek)); } catch {} };
+
+  const TOOLNAMEN: Record<string, string> = {
+    bedrijven: "BV's opzoeken",
+    overzicht: "Dashboardcijfers",
+    facturen: "Facturen zoeken",
+    factuur: "Factuur openen",
+    banktransacties: "Banktransacties",
+    billit_get: "Billit raadplegen",
+  };
+
+  // ---- kleine markdown-weergave (tekst wordt eerst ge-escaped) ----
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s: string) =>
+    esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>");
+  const isGetal = (s: string) => /^[−\-+]?\s*(€\s*)?[−\-]?[\d.,\s]+%?(\s*€)?$/.test(s.trim()) && /\d/.test(s);
+  const cellen = (r: string) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+
+  function markdown(md: string): string {
+    const regels = md.replace(/\r/g, "").split("\n");
+    const uit: string[] = [];
+    let i = 0;
+    while (i < regels.length) {
+      const r = regels[i];
+      if (/^\s*\|.*\|\s*$/.test(r) && /^\s*\|?[\s:|-]+\|?\s*$/.test(regels[i + 1] ?? "")) {
+        const kop = cellen(r);
+        const rijen: string[][] = [];
+        i += 2;
+        while (i < regels.length && /^\s*\|.*\|\s*$/.test(regels[i])) rijen.push(cellen(regels[i++]));
+        const rechts = kop.map((_, k) => rijen.length > 0 && rijen.every((rij) => !rij[k] || isGetal(rij[k].replace(/\*/g, ""))));
+        uit.push(`<div class="tabel"><table><thead><tr>${kop.map((c, k) => `<th${rechts[k] ? ' class="r"' : ""}>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rijen.map((rij) => `<tr>${kop.map((_, k) => `<td${rechts[k] ? ' class="r"' : ""}>${inline(rij[k] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+        continue;
+      }
+      const kop = /^(#{1,4})\s+(.*)$/.exec(r);
+      if (kop) { uit.push(`<h${kop[1].length < 3 ? 3 : 4}>${inline(kop[2])}</h${kop[1].length < 3 ? 3 : 4}>`); i++; continue; }
+      if (/^\s*([-*•]|\d+[.)])\s+/.test(r)) {
+        const genummerd = /^\s*\d/.test(r);
+        const items: string[] = [];
+        while (i < regels.length && /^\s*([-*•]|\d+[.)])\s+/.test(regels[i])) items.push(regels[i++].replace(/^\s*([-*•]|\d+[.)])\s+/, ""));
+        const t = genummerd ? "ol" : "ul";
+        uit.push(`<${t}>${items.map((x) => `<li>${inline(x)}</li>`).join("")}</${t}>`);
+        continue;
+      }
+      if (!r.trim()) { i++; continue; }
+      const alinea: string[] = [];
+      while (i < regels.length && regels[i].trim() && !/^\s*(\||#|[-*•]\s|\d+[.)]\s)/.test(regels[i])) alinea.push(regels[i++]);
+      if (alinea.length === 0) { alinea.push(r); i++; }
+      uit.push(`<p>${alinea.map(inline).join("<br>")}</p>`);
+    }
+    return uit.join("");
+  }
+
+  function voegToe(b: Bericht) {
+    const el = document.createElement("div");
+    el.className = `msg ${b.role === "user" ? "vraag" : "antwoord"}`;
+    if (b.role === "user") el.textContent = b.content;
+    else el.innerHTML = markdown(b.content);
+    lijst.appendChild(el);
+    return el;
+  }
+
+  function toon() {
+    leeg.hidden = gesprek.length > 0;
+    nieuw.hidden = gesprek.length === 0;
+  }
+
+  for (const b of gesprek) voegToe(b);
+  toon();
+
+  const naarOnder = () => window.scrollTo({ top: document.body.scrollHeight });
+
+  async function vraagStellen(tekst: string) {
+    tekst = tekst.trim();
+    if (!tekst || stuurKnop.disabled) return;
+    gesprek.push({ role: "user", content: tekst });
+    bewaar();
+    voegToe(gesprek.at(-1)!);
+    toon();
+    vraag.value = "";
+    vraag.style.height = "";
+    stuurKnop.disabled = true;
+
+    const el = document.createElement("div");
+    el.className = "msg antwoord";
+    el.innerHTML = '<div class="stappen"></div><div class="body"><span class="denkt"><i></i><i></i><i></i></span></div>';
+    lijst.appendChild(el);
+    const stappen = el.querySelector(".stappen")!;
+    const body = el.querySelector(".body")!;
+    naarOnder();
+
+    // tekst vóór een toolgebruik is tussentekst ("ik kijk even…"); enkel het laatste stuk is het antwoord
+    let tekstNu = "";
+    let fout = "";
+    try {
+      const res = await fetch("/api/vraag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ gesprek }) });
+      if (!res.ok || !res.body) throw new Error((await res.text()) || `Fout ${res.status}`);
+      const lezer = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await lezer.read();
+        if (done) break;
+        buf += value;
+        const delen = buf.split("\n");
+        buf = delen.pop()!;
+        for (const d of delen) {
+          if (!d.trim()) continue;
+          const g = JSON.parse(d);
+          if (g.type === "tekst") {
+            tekstNu += g.tekst;
+            body.innerHTML = markdown(tekstNu);
+          } else if (g.type === "tool") {
+            stappen.querySelectorAll(".bezig").forEach((s) => s.classList.remove("bezig"));
+            const s = document.createElement("span");
+            s.className = "stap bezig";
+            s.textContent = TOOLNAMEN[g.naam] ?? g.naam;
+            stappen.appendChild(s);
+            tekstNu = "";
+            body.innerHTML = '<span class="denkt"><i></i><i></i><i></i></span>';
+          } else if (g.type === "fout") {
+            fout = g.tekst;
+          }
+        }
+        naarOnder();
+      }
+    } catch (e) {
+      fout = e instanceof Error ? e.message : String(e);
+    }
+    stappen.querySelectorAll(".bezig").forEach((s) => s.classList.remove("bezig"));
+    if (tekstNu.trim()) {
+      gesprek.push({ role: "assistant", content: tekstNu });
+      bewaar();
+      body.innerHTML = markdown(tekstNu);
+    } else {
+      body.innerHTML = "";
+    }
+    if (fout) {
+      const f = document.createElement("p");
+      f.className = "fout";
+      f.textContent = fout;
+      body.appendChild(f);
+      // een vraag zonder antwoord niet in het gesprek laten staan
+      if (!tekstNu.trim()) { gesprek.pop(); bewaar(); }
+    }
+    stuurKnop.disabled = false;
+    vraag.focus();
+    naarOnder();
+  }
+
+  form.addEventListener("submit", (e) => { e.preventDefault(); vraagStellen(vraag.value); });
+  vraag.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); vraagStellen(vraag.value); }
+  });
+  vraag.addEventListener("input", () => { vraag.style.height = ""; vraag.style.height = vraag.scrollHeight + "px"; });
+  document.querySelectorAll<HTMLButtonElement>(".vb").forEach((b) => b.addEventListener("click", () => vraagStellen(b.textContent ?? "")));
+  nieuw.addEventListener("click", () => {
+    gesprek = [];
+    bewaar();
+    lijst.querySelectorAll(".msg").forEach((m) => m.remove());
+    toon();
+    vraag.focus();
+  });
+</script>
