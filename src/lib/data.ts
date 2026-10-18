@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { bedrag, normIban, mutatieNa, type Tx, type Maand, type InterneLeverancier, type Openstaand } from "./reken";
 import { cfgVoor, winstVoorJaar, openstaandeVerkoop, transactiesVanaf, eigenBedrijf, type Bedrijf } from "./billit";
 
@@ -12,7 +12,8 @@ export type BvVol = Bv & { inWinst: boolean };
 export type Data = { bvs: Bv[]; bijgewerkt: string | null };
 
 const KEY = "data";
-const CACHE_TTL = 900; // 15 minuten
+const CACHE_TTL = 900; // 15 minuten: daarna wordt op de achtergrond ververst
+const BEWAAR = 60 * 86400; // zo lang blijft het laatste resultaat bewaard
 
 const vandaag = () => new Date().toISOString().slice(0, 10);
 
@@ -66,14 +67,27 @@ export function uitForm(form: FormData): Data {
   return { bvs, bijgewerkt: new Date().toISOString() };
 }
 
-async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>, ttl = CACHE_TTL): Promise<T> {
-  if (!vernieuw) {
-    const c = await env.ICOUNT.get<T>(key, "json");
-    if (c !== null) return c;
-  }
+// Stale-while-revalidate: de pagina toont altijd meteen wat bewaard is. Is dat ouder dan `ttl`
+// seconden, dan haalt de worker het na het antwoord op de achtergrond opnieuw op uit Billit.
+// Enkel "Vernieuwen" (of nog niets bewaard) wacht op Billit.
+type Bewaard<T> = { t: number; v: T };
+
+async function ververs<T>(key: string, maak: () => Promise<T>): Promise<T> {
   const v = await maak();
-  await env.ICOUNT.put(key, JSON.stringify(v), { expirationTtl: ttl });
+  await env.ICOUNT.put(key, JSON.stringify({ t: Date.now(), v } satisfies Bewaard<T>), { expirationTtl: BEWAAR });
   return v;
+}
+
+async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>, ttl = CACHE_TTL): Promise<T> {
+  const k = `swr:${key}`;
+  if (!vernieuw) {
+    const c = await env.ICOUNT.get<Bewaard<T>>(k, "json");
+    if (c) {
+      if (Date.now() - c.t > ttl * 1000) waitUntil(ververs(k, maak).catch(() => {}));
+      return c.v;
+    }
+  }
+  return ververs(k, maak);
 }
 
 export type RekeningRegel = Rekening & { mutatie: number | null; huidig: number };
@@ -144,25 +158,24 @@ export async function overzicht(opgeslagen: Data, jaar: number, vernieuw: boolea
       let openstaand: Openstaand | null = null;
 
       if (cfg) {
-        try {
-          const uitsluiten = bv.inWinst ? intern : { btw: [], namen: [] };
-          const w = await gecached(`cache:winst4:${i + 1}:${jaar}:${bv.inWinst ? sleutel : ""}`, vernieuw, () =>
-            winstVoorJaar(cfg, jaar, uitsluiten),
-          );
-          ({ omzet, kosten, winst, maanden } = w);
-          internBedrag = w.intern;
-          const metIban = bv.rekeningen.filter((r) => r.iban);
-          if (metIban.length) {
-            const vanaf = metIban.map((r) => r.datum).sort()[0];
-            tx = await gecached(`cache:tx2:${i + 1}:${vanaf}`, vernieuw, () => transactiesVanaf(cfg, vanaf));
-          }
-        } catch (e) {
+        // winst, transacties en openstaande facturen tegelijk ophalen
+        const uitsluiten = bv.inWinst ? intern : { btw: [], namen: [] };
+        const metIban = bv.rekeningen.filter((r) => r.iban);
+        const vanaf = metIban.map((r) => r.datum).sort()[0];
+        const [w, t, o] = await Promise.allSettled([
+          gecached(`cache:winst4:${i + 1}:${jaar}:${bv.inWinst ? sleutel : ""}`, vernieuw, () => winstVoorJaar(cfg, jaar, uitsluiten)),
+          vanaf ? gecached(`cache:tx2:${i + 1}:${vanaf}`, vernieuw, () => transactiesVanaf(cfg, vanaf)) : Promise.resolve([] as Tx[]),
+          bv.inWinst ? gecached(`cache:open3:${i + 1}`, vernieuw, () => openstaandeVerkoop(cfg)) : Promise.resolve(null),
+        ]);
+        const fouten = [w, t].filter((r): r is PromiseRejectedResult => r.status === "rejected");
+        if (fouten.length) {
+          const e = fouten[0].reason;
           fout = e instanceof Error ? e.message : String(e);
-        }
-        if (bv.inWinst && !fout) {
-          try {
-            openstaand = await gecached(`cache:open3:${i + 1}`, vernieuw, () => openstaandeVerkoop(cfg));
-          } catch {}
+        } else if (w.status === "fulfilled" && t.status === "fulfilled") {
+          ({ omzet, kosten, winst, maanden } = w.value);
+          internBedrag = w.value.intern;
+          tx = t.value;
+          if (o.status === "fulfilled") openstaand = o.value;
         }
       }
 
