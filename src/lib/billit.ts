@@ -20,7 +20,7 @@ export function cfgVoor(n: number): BillitCfg | null {
   };
 }
 
-async function get(cfg: BillitCfg, url: string): Promise<any> {
+export async function get(cfg: BillitCfg, url: string): Promise<any> {
   const headers: Record<string, string> = { ApiKey: cfg.key, Accept: "application/json" };
   if (cfg.partyId) headers.PartyID = cfg.partyId;
   const res = await fetch(url.startsWith("http") ? url : cfg.base + url, { headers });
@@ -29,7 +29,7 @@ async function get(cfg: BillitCfg, url: string): Promise<any> {
 }
 
 // Haalt alle pagina's op (Billit geeft max. 120 per pagina en een NextPageLink).
-async function alle(cfg: BillitCfg, pad: string, maxPaginas = 100): Promise<any[]> {
+export async function alle(cfg: BillitCfg, pad: string, maxPaginas = 100): Promise<any[]> {
   const items: any[] = [];
   let url: string | undefined = pad;
   for (let p = 0; url && p < maxPaginas; p++) {
@@ -41,7 +41,7 @@ async function alle(cfg: BillitCfg, pad: string, maxPaginas = 100): Promise<any[
   return items;
 }
 
-const q = (filter: string) => "?$filter=" + encodeURIComponent(filter);
+export const q = (filter: string) => "?$filter=" + encodeURIComponent(filter);
 
 export async function winstVoorJaar(cfg: BillitCfg, jaar: number, intern?: InterneLeverancier): Promise<Winst> {
   const orders = await alle(

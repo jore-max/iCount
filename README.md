@@ -27,6 +27,16 @@ Testen tegen de Billit-sandbox: zet `BILLIT_BASE=https://api.sandbox.billit.be`.
 
 Controle: `/billit-test` toont per BV twee ruwe records uit Billit.
 
+## AI-assistent
+
+De pagina **Assistent** beantwoordt vragen over Billit in gewone taal ("welke facturen staan nog open?",
+"grootste kosten dit jaar?"). Claude zoekt het zelf live op in Billit (facturen, factuurregels,
+banktransacties, relaties) en gebruikt voor winstvragen dezelfde cijfers als het overzicht. Enkel lezen.
+
+Nodig: een API-sleutel van https://console.anthropic.com als secret:
+
+    npx wrangler secret put ANTHROPIC_API_KEY
+
 ## Lokaal draaien
 
     npm install
