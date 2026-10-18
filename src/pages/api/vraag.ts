@@ -3,7 +3,7 @@ import { beantwoord, assistentKlaar, type Bericht, type Gebeurtenis } from "../.
 
 // POST { gesprek: [{ role, content }] } -> NDJSON-stroom met gebeurtenissen (tool, tekst, fout, klaar).
 export const POST: APIRoute = async ({ request }) => {
-  if (!assistentKlaar()) return new Response("Zet eerst het secret ANTHROPIC_API_KEY.", { status: 503 });
+  if (!assistentKlaar()) return new Response("De AI-binding ontbreekt in wrangler.jsonc.", { status: 503 });
   const body = await request.json().catch(() => null);
   const gesprek: Bericht[] = (Array.isArray(body?.gesprek) ? body.gesprek : [])
     .filter((b: any) => (b?.role === "user" || b?.role === "assistant") && typeof b.content === "string" && b.content.trim())

@@ -6,6 +6,7 @@
   "assets": { "directory": "./dist", "binding": "ASSETS" },
   "routes": [{ "pattern": "icount.ibite.be", "custom_domain": true }],
   "observability": { "enabled": true },
+  "ai": { "binding": "AI" },
   "kv_namespaces": [
     { "binding": "ICOUNT", "id": "bf11a00146214d968cb32a6bbb19e6dc" },
     { "binding": "SESSION", "id": "8711040c31c644218eed3139a749b3a2" }

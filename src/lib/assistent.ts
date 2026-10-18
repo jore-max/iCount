@@ -1,24 +1,24 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { cfgVoor, get, alle, q } from "./billit";
 import { laad, overzicht, metBillit, bedrijvenUitBillit } from "./data";
 import { veld } from "./reken";
 
-// AI-assistent: Claude beantwoordt vragen over Billit en bevraagt daarvoor zelf live de Billit-API
-// (enkel lezen). Nodig: secret ANTHROPIC_API_KEY.
+// AI-assistent: een model op Cloudflare Workers AI beantwoordt vragen over Billit en bevraagt daarvoor
+// zelf live de Billit-API (enkel lezen). Nodig: de AI-binding in wrangler.jsonc, geen API-sleutel.
 
-const MODEL = "claude-opus-5-5";
-const MAX_RONDES = 12; // zoveel keer mag Claude na elkaar tools gebruiken per vraag
+const MODEL = "@cf/moonshotai/kimi-k2.6";
+const MAX_RONDES = 12; // zoveel keer mag het model na elkaar tools gebruiken per vraag
 const MAX_TEKENS = 60_000; // een tool-antwoord wordt ingekort tot dit aantal tekens
 
-export const assistentKlaar = () => !!(env as any).ANTHROPIC_API_KEY;
+export const assistentKlaar = () => !!(env as any).AI;
 
 type Obj = Record<string, any>;
+type Tool = { name: string; description: string; input_schema: Obj };
 
 const bvParam = { type: "integer", minimum: 1, maximum: 4, description: "Nummer van de BV (1 t.e.m. 4, zie bedrijven)." };
 const datum = (beschrijving: string) => ({ type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: beschrijving });
 
-const TOOLS: Anthropic.Tool[] = [
+const TOOLS: Tool[] = [
   {
     name: "bedrijven",
     description: "De 4 BV's met nummer, naam, btw-nummer, of ze meetellen in de winst en of Billit gekoppeld is. Gebruik dit eerst om te weten welke BV welk nummer heeft.",
@@ -201,45 +201,54 @@ function systeem() {
 export type Bericht = { role: "user" | "assistant"; content: string };
 export type Gebeurtenis = { type: "tool"; naam: string; invoer: Obj } | { type: "tekst"; tekst: string } | { type: "fout"; tekst: string } | { type: "klaar" };
 
-// Beantwoordt de laatste vraag; meldt tussendoor welke tools lopen en stuurt de tekst stukje per stukje.
+type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
+
+// Workers AI geeft (afhankelijk van het model) een OpenAI-antwoord of de oudere vorm { response, tool_calls }.
+function bericht(res: any): { content: string; tool_calls: ToolCall[] } {
+  const m = res?.choices?.[0]?.message;
+  const ruw: any[] = (m ? m.tool_calls : res?.tool_calls) ?? [];
+  const tool_calls = ruw.map((t, i) => ({
+    id: String(t.id ?? `call_${Date.now()}_${i}`),
+    type: "function" as const,
+    function: {
+      name: String(t.function?.name ?? t.name),
+      arguments: typeof (t.function?.arguments ?? t.arguments) === "string" ? (t.function?.arguments ?? t.arguments) : JSON.stringify(t.function?.arguments ?? t.arguments ?? {}),
+    },
+  }));
+  return { content: String((m ? m.content : res?.response) ?? ""), tool_calls };
+}
+
+const leesInvoer = (s: string): Obj => { try { return JSON.parse(s || "{}") ?? {}; } catch { return {}; } };
+
+// Beantwoordt de laatste vraag; meldt tussendoor welke tools lopen en stuurt dan het antwoord.
 export async function beantwoord(gesprek: Bericht[], stuur: (g: Gebeurtenis) => void): Promise<void> {
-  const client = new Anthropic({ apiKey: (env as any).ANTHROPIC_API_KEY, baseURL: (env as any).ANTHROPIC_BASE_URL || undefined });
-  const messages: Anthropic.Beta.BetaMessageParam[] = gesprek.map((b) => ({ role: b.role, content: b.content }));
+  const ai = (env as any).AI as { run: (model: string, invoer: Obj) => Promise<any> };
+  const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+  const messages: Obj[] = [{ role: "system", content: systeem() }, ...gesprek.map((b) => ({ role: b.role, content: b.content }))];
 
   for (let ronde = 0; ronde < MAX_RONDES; ronde++) {
-    const stream = client.beta.messages.stream({
-      model: MODEL,
-      max_tokens: 32000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium" },
-      cache_control: { type: "ephemeral" },
-      system: systeem(),
-      tools: TOOLS,
-      messages,
-    });
-    stream.on("text", (tekst) => stuur({ type: "tekst", tekst }));
-    const antwoord = await stream.finalMessage();
-    messages.push({ role: "assistant", content: antwoord.content });
+    const antwoord = bericht(await ai.run(MODEL, { messages, tools, max_tokens: 8000 }));
+    if (!antwoord.tool_calls.length) {
+      if (!antwoord.content.trim()) return stuur({ type: "fout", tekst: "Het model gaf geen antwoord. Probeer het opnieuw." });
+      return stuur({ type: "tekst", tekst: antwoord.content });
+    }
+    messages.push({ role: "assistant", content: antwoord.content || null, tool_calls: antwoord.tool_calls });
 
-    if (antwoord.stop_reason === "refusal") return stuur({ type: "fout", tekst: "Claude wou deze vraag niet beantwoorden." });
-    if (antwoord.stop_reason !== "tool_use") return;
-
-    const resultaten: Anthropic.Beta.BetaToolResultBlockParam[] = await Promise.all(
-      antwoord.content
-        .filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use")
-        .map(async (b) => {
-          stuur({ type: "tool", naam: b.name, invoer: b.input as Obj });
-          try {
-            let s = JSON.stringify(await voerUit(b.name, b.input as Obj));
-            if (s.length > MAX_TEKENS) s = s.slice(0, MAX_TEKENS) + " …[ingekort: vraag een kleinere periode of gebruik zoek]";
-            return { type: "tool_result" as const, tool_use_id: b.id, content: s };
-          } catch (e) {
-            return { type: "tool_result" as const, tool_use_id: b.id, content: e instanceof Error ? e.message : String(e), is_error: true };
-          }
-        }),
+    const resultaten = await Promise.all(
+      antwoord.tool_calls.map(async (t) => {
+        const invoer = leesInvoer(t.function.arguments);
+        stuur({ type: "tool", naam: t.function.name, invoer });
+        let s: string;
+        try {
+          s = JSON.stringify(await voerUit(t.function.name, invoer));
+          if (s.length > MAX_TEKENS) s = s.slice(0, MAX_TEKENS) + " …[ingekort: vraag een kleinere periode of gebruik zoek]";
+        } catch (e) {
+          s = "Fout: " + (e instanceof Error ? e.message : String(e));
+        }
+        return { role: "tool", tool_call_id: t.id, content: s };
+      }),
     );
-    messages.push({ role: "user", content: resultaten });
+    messages.push(...resultaten);
   }
   stuur({ type: "fout", tekst: "Te veel stappen nodig; stel de vraag wat specifieker." });
 }

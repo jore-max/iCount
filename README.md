@@ -30,12 +30,10 @@ Controle: `/billit-test` toont per BV twee ruwe records uit Billit.
 ## AI-assistent
 
 De pagina **Assistent** beantwoordt vragen over Billit in gewone taal ("welke facturen staan nog open?",
-"grootste kosten dit jaar?"). Claude zoekt het zelf live op in Billit (facturen, factuurregels,
-banktransacties, relaties) en gebruikt voor winstvragen dezelfde cijfers als het overzicht. Enkel lezen.
-
-Nodig: een API-sleutel van https://console.anthropic.com als secret:
-
-    npx wrangler secret put ANTHROPIC_API_KEY
+"grootste kosten dit jaar?"). Een model op Cloudflare Workers AI (`@cf/moonshotai/kimi-k2.6`, via de
+`AI`-binding in `wrangler.jsonc`) zoekt het zelf live op in Billit (facturen, factuurregels, banktransacties,
+relaties) en gebruikt voor winstvragen dezelfde cijfers als het overzicht. Enkel lezen. Geen API-sleutel nodig;
+het verbruik komt op de Cloudflare-rekening (Workers Paid nodig voor dit model).
 
 ## Lokaal draaien
 
