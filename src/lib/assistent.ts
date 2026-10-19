@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { cfgVoor, get, alle, q } from "./billit";
-import { laad, overzicht, metBillit, bedrijvenUitBillit } from "./data";
+import { laad, overzicht, metBillit, bedrijvenUitBillit, gecached } from "./data";
 import { veld } from "./reken";
 
 // AI-assistent: een model op Cloudflare Workers AI beantwoordt vragen over Billit en bevraagt daarvoor
@@ -8,7 +8,8 @@ import { veld } from "./reken";
 
 const MODEL = "@cf/moonshotai/kimi-k2.6";
 const MAX_RONDES = 12; // zoveel keer mag het model na elkaar tools gebruiken per vraag
-const MAX_TEKENS = 60_000; // een tool-antwoord wordt ingekort tot dit aantal tekens
+const MAX_TEKENS = 30_000; // een tool-antwoord wordt ingekort tot dit aantal tekens
+const MAX_FACTUREN = 150; // zoveel facturen gaan mee in de lijst; de totalen tellen ze allemaal
 
 export const assistentKlaar = () => !!(env as any).AI;
 
@@ -37,7 +38,7 @@ const TOOLS: Tool[] = [
   {
     name: "facturen",
     description:
-      "Zoekt facturen en creditnota's (ook offertes e.d.) van één BV in Billit, binnen een periode op factuurdatum. Geeft totalen en een lijst met per factuur id, nummer, datum, vervaldag, tegenpartij, type, richting (Income = verkoop, Cost = aankoop), status, bedrag excl./incl. btw, nog te betalen en betaald. Gebruik factuur voor de regels van één factuur.",
+      "Zoekt facturen en creditnota's (ook offertes e.d.) van één BV in Billit, binnen een periode op factuurdatum. Geeft totalen, totalen per tegenpartij (perTegenpartij, grootste eerst) en een lijst (grootste eerst) met per factuur id, nummer, datum, vervaldag, tegenpartij, type, richting (Income = verkoop, Cost = aankoop), status, bedrag excl./incl. btw, nog te betalen en betaald. Gebruik factuur voor de regels van één factuur.",
     input_schema: {
       type: "object",
       properties: {
@@ -159,20 +160,46 @@ async function voerUit(naam: string, inp: Obj): Promise<unknown> {
       }));
     }
     case "facturen": {
-      const delen = [`OrderDate ge datetime'${inp.vanaf}'`, `OrderDate le datetime'${inp.tot}'`];
-      if (inp.richting && inp.richting !== "alle") delen.push(`OrderDirection eq '${inp.richting}'`);
-      if (inp.onbetaald) delen.push("Paid eq false");
-      let orders = await alle(cfg(inp.bv), "/v1/orders" + q(delen.join(" and ")), 40);
-      if (inp.zoek) orders = orders.filter((o) => bevat(o, inp.zoek));
-      const lijst = orders.map(factuurKort);
-      const som = (k: string) => lijst.reduce((s, f) => s + (Number(f[k]) || 0), 0);
-      return { aantal: lijst.length, totaalExcl: som("excl"), totaalIncl: som("incl"), totaalTeBetalen: som("teBetalen"), facturen: lijst };
+      // Alle facturen van een BV per jaar worden 15 minuten bewaard (zoals het dashboard), zodat een
+      // volgende vraag niet opnieuw op Billit moet wachten. Filteren gebeurt hier.
+      const c = cfg(inp.bv);
+      const jaren: number[] = [];
+      for (let j = Number(inp.vanaf.slice(0, 4)); j <= Number(inp.tot.slice(0, 4)); j++) jaren.push(j);
+      const perJaar = await Promise.all(
+        jaren.map((j) =>
+          gecached(`cache:orders:${inp.bv}:${j}`, false, async () =>
+            (await alle(c, "/v1/orders" + q(`OrderDate ge datetime'${j}-01-01' and OrderDate le datetime'${j}-12-31'`))).map(factuurKort),
+          ),
+        ),
+      );
+      let lijst: Obj[] = perJaar.flat().filter((f) => f.datum >= inp.vanaf && f.datum <= inp.tot);
+      if (inp.richting && inp.richting !== "alle") lijst = lijst.filter((f) => String(f.richting).toLowerCase() === inp.richting.toLowerCase());
+      if (inp.onbetaald) lijst = lijst.filter((f) => f.betaald !== true);
+      if (inp.zoek) lijst = lijst.filter((f) => bevat(f, inp.zoek));
+      const som = (rijen: Obj[], k: string) => rijen.reduce((s, f) => s + (Number(f[k]) || 0), 0);
+      // totalen per tegenpartij, zodat het model niet zelf honderden facturen moet optellen
+      const groepen = new Map<string, Obj[]>();
+      for (const f of lijst) groepen.set(f.tegenpartij ?? "?", [...(groepen.get(f.tegenpartij ?? "?") ?? []), f]);
+      const perTegenpartij = [...groepen]
+        .map(([naam, r]) => ({ tegenpartij: naam, aantal: r.length, excl: som(r, "excl"), incl: som(r, "incl"), teBetalen: som(r, "teBetalen") }))
+        .sort((a, b) => b.excl - a.excl)
+        .slice(0, 40);
+      lijst.sort((a, b) => Math.abs(Number(b.excl) || 0) - Math.abs(Number(a.excl) || 0));
+      return {
+        aantal: lijst.length,
+        totaalExcl: som(lijst, "excl"),
+        totaalIncl: som(lijst, "incl"),
+        totaalTeBetalen: som(lijst, "teBetalen"),
+        perTegenpartij,
+        facturen: lijst.slice(0, MAX_FACTUREN),
+        ...(lijst.length > MAX_FACTUREN && { opmerking: `Enkel de ${MAX_FACTUREN} grootste facturen staan in de lijst; de totalen tellen alle ${lijst.length}. Gebruik zoek of een kortere periode voor de rest.` }),
+      };
     }
     case "factuur":
       return zonderLeeg(await get(cfg(inp.bv), `/v1/orders/${Number(inp.id)}`));
     case "banktransacties": {
       const filter = `ValueDate ge datetime'${inp.vanaf}' and ValueDate le datetime'${inp.tot}'`;
-      let tx = await alle(cfg(inp.bv), "/v1/financialTransactions" + q(filter), 40);
+      let tx = await gecached(`cache:tx-ai:${inp.bv}:${inp.vanaf}:${inp.tot}`, false, () => alle(cfg(inp.bv), "/v1/financialTransactions" + q(filter), 40));
       if (inp.zoek) tx = tx.filter((t) => bevat(t, inp.zoek));
       return { aantal: tx.length, transacties: zonderLeeg(tx) };
     }
@@ -186,11 +213,14 @@ async function voerUit(naam: string, inp: Obj): Promise<unknown> {
   throw new Error(`Onbekende tool ${naam}`);
 }
 
-function systeem() {
+async function systeem() {
   const vandaag = new Date().toISOString().slice(0, 10);
+  const bvs = await voerUit("bedrijven", {}).catch(() => []);
   return `Je bent de financiële assistent in iCount, het interne dashboard van Jore. Je beantwoordt vragen over de boekhouding van zijn 4 Belgische BV's in Billit (facturen, klanten, leveranciers, betalingen, banktransacties, winst).
 
-- Haal cijfers altijd live op met de tools; verzin nooit bedragen. Begin met bedrijven als je niet weet welke BV welk nummer heeft.
+- Haal cijfers altijd op met de tools; verzin nooit bedragen. Neem totalen over uit de tools (totaalExcl, perTegenpartij) in plaats van zelf op te tellen.
+- Werk snel: roep tools die je nodig hebt in één keer tegelijk op (bv. facturen voor alle BV's samen), en stop zodra je genoeg weet.
+- De BV's: ${JSON.stringify(bvs)}
 - Groepsstructuur: Jove factureert aan de andere BV's. Jove telt niet mee in de winst en haar facturen tellen niet als kost bij de andere BV's. Voor winstvragen gebruik je overzicht, zodat je antwoord overeenkomt met het dashboard.
 - Winst is exclusief btw, zonder ontwerpfacturen (status Draft). Nog te ontvangen is inclusief btw.
 - Antwoord in het Nederlands (Belgisch), kort en to the point, met bedragen als € 1.234,56. Gebruik een tabel als je meerdere facturen of BV's vergelijkt. Zeg erbij over welke periode en welke BV('s) je antwoord gaat.
@@ -224,10 +254,13 @@ const leesInvoer = (s: string): Obj => { try { return JSON.parse(s || "{}") ?? {
 export async function beantwoord(gesprek: Bericht[], stuur: (g: Gebeurtenis) => void): Promise<void> {
   const ai = (env as any).AI as { run: (model: string, invoer: Obj) => Promise<any> };
   const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
-  const messages: Obj[] = [{ role: "system", content: systeem() }, ...gesprek.map((b) => ({ role: b.role, content: b.content }))];
+  const messages: Obj[] = [{ role: "system", content: await systeem() }, ...gesprek.map((b) => ({ role: b.role, content: b.content }))];
 
   for (let ronde = 0; ronde < MAX_RONDES; ronde++) {
-    const antwoord = bericht(await ai.run(MODEL, { messages, tools, max_tokens: 8000 }));
+    const t0 = Date.now();
+    // Zonder "denken": met denken duurt elke stap meer dan een minuut, zonder ongeveer 5 seconden.
+    const antwoord = bericht(await ai.run(MODEL, { messages, tools, max_tokens: 8000, chat_template_kwargs: { thinking: false } }));
+    console.log(`assistent: ronde ${ronde + 1} model ${Date.now() - t0} ms, ${antwoord.tool_calls.length} tools`);
     if (!antwoord.tool_calls.length) {
       if (!antwoord.content.trim()) return stuur({ type: "fout", tekst: "Het model gaf geen antwoord. Probeer het opnieuw." });
       return stuur({ type: "tekst", tekst: antwoord.content });
@@ -239,8 +272,10 @@ export async function beantwoord(gesprek: Bericht[], stuur: (g: Gebeurtenis) => 
         const invoer = leesInvoer(t.function.arguments);
         stuur({ type: "tool", naam: t.function.name, invoer });
         let s: string;
+        const t0 = Date.now();
         try {
           s = JSON.stringify(await voerUit(t.function.name, invoer));
+          console.log(`assistent: tool ${t.function.name} ${Date.now() - t0} ms, ${s.length} tekens`);
           if (s.length > MAX_TEKENS) s = s.slice(0, MAX_TEKENS) + " …[ingekort: vraag een kleinere periode of gebruik zoek]";
         } catch (e) {
           s = "Fout: " + (e instanceof Error ? e.message : String(e));

@@ -78,7 +78,7 @@ async function ververs<T>(key: string, maak: () => Promise<T>): Promise<T> {
   return v;
 }
 
-async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>, ttl = CACHE_TTL): Promise<T> {
+export async function gecached<T>(key: string, vernieuw: boolean, maak: () => Promise<T>, ttl = CACHE_TTL): Promise<T> {
   const k = `swr:${key}`;
   if (!vernieuw) {
     const c = await env.ICOUNT.get<Bewaard<T>>(k, "json");
